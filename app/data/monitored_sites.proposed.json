@@ -63,5 +63,39 @@
       "end_date": "2025-01-06",
       "note": "AUTHORISED_ACTIVITY expected from inspected pair; This pair demonstrates building on prepared land, not the original hill removal or mangrove reclamation. Wetland changes outside the airport platform must be judged separately. The old and renewed clearance have separate registry periods."
     }
+  },
+  {
+    "name": "Parsa East Kete Basan mine, Hasdeo Arand",
+    "state": "Chhattisgarh",
+    "district": "Surguja",
+    "site_type": "mining",
+    "categories": [
+      "MINING",
+      "DEFORESTATION",
+      "OTHER_CHANGE"
+    ],
+    "description": "Open-cast mine with visible bench advance and changing bare ground. Phase-II authorisation is documented; clearance and environmental concerns have been contested. Approximate mine footprint only.",
+    "bbox": [
+      82.79,
+      22.805,
+      82.845,
+      22.855
+    ],
+    "interval": 1440,
+    "sources": [
+      {
+        "title": "Supreme Court order, CA 4395/2014, 16 October 2023 (Indian Kanoon transcript)",
+        "url": "https://indiankanoon.org/doc/46195082/"
+      },
+      {
+        "title": "NGT e-Journal 2025, pp.32–36, OA 59/2024 and connected matters",
+        "url": "https://www.greentribunal.gov.in/sites/default/files/e-Journal_2025.pdf"
+      }
+    ],
+    "replay": {
+      "start_date": "2021-02-24",
+      "end_date": "2025-03-25",
+      "note": "AUTHORISED_ACTIVITY expected from inspected pair; Authorised is a registry match, not a legal conclusion. The zone is a conservative illustrative mine footprint, not the lease or full Phase-II forest-diversion boundary. Its valid_from is the documented state permission of 25 March 2022, so early replay scenes before that date are not covered by this entry."
+    }
   }
 ]

@@ -18,6 +18,7 @@ Coordinates were refined from the inspected imagery; they are monitoring AOIs, n
 |---|---|---|---:|---:|
 | Noida International Airport, Jewar | AUTHORISED_ACTIVITY | 2021-03-20 → 2025-03-24 | 153 | 7 / 7 |
 | Navi Mumbai International Airport, Ulwe | AUTHORISED_ACTIVITY | 2021-01-27 → 2025-01-06 | 141 | 6 / 6 |
+| Parsa East Kete Basan mine, Hasdeo Arand | AUTHORISED_ACTIVITY | 2021-02-24 → 2025-03-25 | 148 | 5 / 7 |
 
 ### Noida International Airport, Jewar
 
@@ -68,6 +69,31 @@ The 2021 view already shows a large levelled platform with perimeter roads. By 2
 [NMIA Environmental & CRZ compliance report, April–September 2025](https://navimumbai.adaniairports.com/-/media/Images/AdaniAirNaviMumbaiAirport/Reports/Environmental-Compliances/Half-Yearly-Environment--CRZ-Compliance-Reports/NMIAL--Half_Yearly_Compliance-Report-April-2025--Sept-2025.pdf). [PIB: Environmental clearance accorded, 22 November 2010](https://www.pib.gov.in/newsite/PrintRelease.aspx?lang=2&reg=48&relid=67416).
 
 **Limits.** This pair demonstrates building on prepared land, not the original hill removal or mangrove reclamation. Wetland changes outside the airport platform must be judged separately. The old and renewed clearance have separate registry periods.
+
+### Parsa East Kete Basan mine, Hasdeo Arand
+
+**Verified visually.** Expected `AUTHORISED_ACTIVITY`; categories: MINING, DEFORESTATION, OTHER_CHANGE.
+
+- WGS84 bbox: `[82.79, 22.805, 82.845, 22.855]`; canonical tile `44QPL`.
+- Replay: **2021-02-24 to 2025-03-25**; 148 distinct tile-screened clear dates.
+- Recent 90 days: **5 AOI-clear dates** out of 7 tile-screened dates.
+
+Both dates show the characteristic curved, terraced open pit. The southern bench/overburden boundary advances into the wooded margin, while internal benches and bare surfaces change. The eastern pit end is near the right edge, not at the incorrect 82.90E location.
+
+| Check | Scene (linked STAC record) | UTC acquisition | Tile cloud | AOI valid |
+|---|---|---|---:|---:|
+| Before | [S2B_44QPL_20210224_1_L2A](https://earth-search.aws.element84.com/v1/collections/sentinel-2-l2a/items/S2B_44QPL_20210224_1_L2A) | 2021-02-24T05:12:24.862000Z | 0.000073% | 100.00% |
+| After | [S2B_44QPL_20250325_0_L2A](https://earth-search.aws.element84.com/v1/collections/sentinel-2-l2a/items/S2B_44QPL_20250325_0_L2A) | 2025-03-25T05:12:29.337000Z | 0.000173% | 100.00% |
+
+![Parsa East Kete Basan mine, Hasdeo Arand, before](preview-pekb-before.jpg)
+
+![Parsa East Kete Basan mine, Hasdeo Arand, after](preview-pekb-after.jpg)
+
+**Public record.** The Supreme Court order records MoEFCC Phase-II approval on 2 February 2022 and state permission on 25 March 2022, without deciding the merits of the High Court challenge. Correction to the brief: NGT e-Journal 2025 records disposal of OA 59/2024, 128/2024 and 133/2024 on 28 May 2025, referring to parallel court proceedings. Do not label that NGT OA ongoing; the present status of those other proceedings was not established.
+
+[Supreme Court order, CA 4395/2014, 16 October 2023 (Indian Kanoon transcript)](https://indiankanoon.org/doc/46195082/). [NGT e-Journal 2025, pp.32–36, OA 59/2024 and connected matters](https://www.greentribunal.gov.in/sites/default/files/e-Journal_2025.pdf).
+
+**Limits.** Authorised is a registry match, not a legal conclusion. The zone is a conservative illustrative mine footprint, not the lease or full Phase-II forest-diversion boundary. Its valid_from is the documented state permission of 25 March 2022, so early replay scenes before that date are not covered by this entry.
 
 ## Authorisation registry limitations
 

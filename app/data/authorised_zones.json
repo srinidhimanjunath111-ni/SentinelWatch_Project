@@ -117,5 +117,54 @@
     "valid_to": "2031-11-27",
     "source": "Approximate runway/terminal platform traced from Sentinel-2, 6 January 2025; not an official clearance boundary. EC/CRZ date and expiry from the public 2025 compliance report.",
     "is_illustrative": true
+  },
+  {
+    "name": "Parsa East Kete Basan mine, Hasdeo Arand — illustrative activity footprint",
+    "zone_type": "MINING",
+    "geometry": {
+      "type": "Polygon",
+      "coordinates": [
+        [
+          [
+            82.791,
+            22.82
+          ],
+          [
+            82.82,
+            22.818
+          ],
+          [
+            82.841,
+            22.824
+          ],
+          [
+            82.844,
+            22.834
+          ],
+          [
+            82.827,
+            22.835
+          ],
+          [
+            82.809,
+            22.838
+          ],
+          [
+            82.791,
+            22.842
+          ],
+          [
+            82.791,
+            22.82
+          ]
+        ]
+      ]
+    },
+    "authority": "MoEFCC; Government of Chhattisgarh",
+    "reference": "Supreme Court order, 16 October 2023, CA4395/2014: https://indiankanoon.org/doc/46195082/",
+    "valid_from": "2022-03-25",
+    "valid_to": null,
+    "source": "Approximate active-pit footprint traced from Sentinel-2, 25 March 2025, not an official lease. Clearance contested; NGT OA59/2024 disposed 28 May 2025, parallel court proceedings noted. Current status/expiry unverified.",
+    "is_illustrative": true
   }
 ]
