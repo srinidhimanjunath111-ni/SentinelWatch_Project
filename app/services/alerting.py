@@ -19,6 +19,7 @@ from sqlalchemy.orm import Session, joinedload
 
 from app.models import Alert, Case, Department, Finding, MonitoringArea
 from app.satellite.grid import AOIGrid, rasterize_geometry
+from app.services.analysis import severity_for
 from app.services.audit import record_audit
 from app.vocabulary import (
     ACTIVE_ALERT_STATUSES,
@@ -173,7 +174,11 @@ def create_or_merge_alerts(
                 (
                     prior
                     for prior in open_alerts
-                    if prior.category == finding.category and _overlaps(prior, region, grid)
+                    # A changed verdict is an escalation and needs its own dispatch, so
+                    # only the same category under the same verdict counts as a repeat.
+                    if prior.category == finding.category
+                    and prior.verdict == finding.verdict
+                    and _overlaps(prior, region, grid)
                 ),
                 None,
             )
@@ -182,6 +187,7 @@ def create_or_merge_alerts(
             duplicate.last_seen_at = processed_at
             duplicate.area_m2 = max(duplicate.area_m2 or 0.0, finding.area_m2)
             duplicate.confidence = max(duplicate.confidence or 0.0, finding.confidence)
+            duplicate.severity = severity_for(duplicate.verdict or "", duplicate.area_m2)
             duplicate.priority_score = priority_score(
                 duplicate.verdict, duplicate.confidence, duplicate.area_m2
             )

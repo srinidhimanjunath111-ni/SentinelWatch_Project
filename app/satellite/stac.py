@@ -22,6 +22,7 @@ from app.satellite.grid import AOIGrid
 from app.satellite.provider import (
     BAND_NAMES,
     AcquisitionCandidate,
+    AmbiguousRadiometry,
     ProviderError,
     ProviderResponseError,
     deduplicate_scenes,
@@ -233,8 +234,8 @@ class StacCogProvider:
     def sign(self, href: str) -> str:
         return href
 
-    def dn_offset(self, scene: AcquisitionCandidate, dn: np.ndarray) -> float:
-        """The digital-number offset still present in this scene's pixels."""
+    def dn_offset(self, scene: AcquisitionCandidate) -> float:
+        """The digital-number offset present in this scene's pixels, from metadata alone."""
 
         raise NotImplementedError
 
@@ -255,6 +256,7 @@ class StacCogProvider:
         return self._read_asset(scene, "SCL", grid, nearest=True).astype(np.uint8)
 
     def read_bands(self, scene: AcquisitionCandidate, grid: AOIGrid) -> np.ndarray:
+        offset = self.dn_offset(scene)  # Before any download, so an ambiguous scene costs nothing.
         with ThreadPoolExecutor(max_workers=len(BAND_NAMES), thread_name_prefix="band") as pool:
             futures = [
                 pool.submit(self._read_asset, scene, band, grid, nearest=False)
@@ -262,7 +264,6 @@ class StacCogProvider:
             ]
             dn = np.stack([future.result() for future in futures]).astype(np.float32)
         scale = scene.assets[BAND_NAMES[0]].get("scale") or DEFAULT_SCALE
-        offset = self.dn_offset(scene, dn)
         reflectance = np.clip((dn - offset) * float(scale), 0.0, 1.0)
         reflectance[dn == 0] = 0.0  # Digital number 0 is no-data in every baseline.
         return reflectance.astype(np.float32)
@@ -306,19 +307,19 @@ class EarthSearchProvider(StacCogProvider):
             "earthsearch:boa_offset_applied": properties.get("earthsearch:boa_offset_applied"),
         }
 
-    def dn_offset(self, scene: AcquisitionCandidate, dn: np.ndarray) -> float:
-        """Whether this COG still carries ESA's +1000 baseline-04 offset.
+    def dn_offset(self, scene: AcquisitionCandidate) -> float:
+        """The digital-number offset still in this COG, or an error if metadata cannot say.
 
         ``raster:bands`` lists offset -0.1 on nearly every modern item, but pixel checks
-        against the raw Planetary Computer copy of the same scenes show that Earth Search
-        has usually removed it already, so applying that metadata would subtract it twice:
+        against the raw Planetary Computer copy of the same scenes show Earth Search has
+        usually removed it already, so applying that metadata would subtract it twice:
 
-        - flag true: pixels are already offset-free (S2A_43QBA_20220427_0: 451 here, raw 1446)
-        - flag false: either state occurs. S2A_43QBA_20220226_1 still has the offset (1224),
-          while S2C_43QBA_20250220_0 does not (187, raw 1187), despite identical metadata.
-
-        A true flag is trusted; otherwise the pixels decide. Reflectance below zero cannot
-        occur in quantity, so a blue band with values under 950 cannot still be offset.
+        - baseline below 04.00: no offset exists.
+        - flag true: pixels are offset-free (S2A_43QBA_20220427_0: 451 here, raw 1446).
+        - flag false or absent: either state occurs. S2A_43QBA_20220226_1 still has the
+          offset (1224), while S2C_43QBA_20250220_0 does not (187, raw 1187), despite the
+          same metadata, and pixel brightness cannot settle it because a bright window looks
+          like an offset one. These scenes are read from a provider serving raw values.
         """
 
         baseline = parse_baseline(scene.processing_baseline)
@@ -326,10 +327,10 @@ class EarthSearchProvider(StacCogProvider):
             return 0.0
         if scene.raw_properties.get("earthsearch:boa_offset_applied") is True:
             return 0.0
-        blue = dn[0][dn[0] > 0]
-        if blue.size == 0:
-            return 0.0
-        return 0.0 if float((blue < 950).mean()) > 0.01 else RAW_OFFSET_DN
+        raise AmbiguousRadiometry(
+            f"{scene.product_id} has baseline {scene.processing_baseline} without a true "
+            "offset flag, so its radiometry cannot be determined from Earth Search metadata."
+        )
 
 
 class PlanetaryComputerProvider(StacCogProvider):
@@ -383,7 +384,7 @@ class PlanetaryComputerProvider(StacCogProvider):
         tile = properties.get("s2:mgrs_tile")
         return str(tile) if tile else None
 
-    def dn_offset(self, scene: AcquisitionCandidate, dn: np.ndarray) -> float:
+    def dn_offset(self, scene: AcquisitionCandidate) -> float:
         """Planetary Computer serves ESA's digital numbers unmodified."""
 
         baseline = parse_baseline(scene.processing_baseline)

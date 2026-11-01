@@ -22,7 +22,7 @@ from app.models import Alert, AuditLog, Case, Department, NotificationAttempt
 from app.services.alerting import alert_query, department_for
 from app.services.audit import record_audit
 from app.services.events import publish
-from app.services.payloads import alert_payload, dispatch_payload
+from app.services.payloads import alert_payload
 from app.services.reporting import (
     ReportDependencyUnavailable,
     build_case_investigation_report,
@@ -42,7 +42,6 @@ def case_report_pdf(db: Session, case: Case) -> bytes | None:
         value
         for value in (
             case.id,
-            case.aoi_id,
             case.analysis_id,
             *(finding.id for finding in case.findings),
             *(alert.id for alert in case.alerts),

@@ -22,6 +22,7 @@ from app.satellite.geometry import bbox_polygon
 from app.satellite.grid import AOIGrid
 from app.satellite.provider import (
     AcquisitionCandidate,
+    AmbiguousRadiometry,
     ImageryProvider,
     ProviderError,
     safe_scene_fragment,
@@ -182,6 +183,10 @@ class ProviderChain:
                     errors.append(f"{provider.name}: scene not in catalogue")
                     continue
                 result = reader(provider, local)
+            except AmbiguousRadiometry as error:
+                logger.info("Trying the next provider: %s", error)
+                errors.append(f"{provider.name}: {error}")
+                continue
             except ProviderError as error:
                 self._failed(provider, error)
                 errors.append(f"{provider.name}: {error}")

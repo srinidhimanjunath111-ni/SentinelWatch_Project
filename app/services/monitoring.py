@@ -11,8 +11,9 @@ from __future__ import annotations
 import json
 import logging
 import threading
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import date, datetime, timedelta
+from math import ceil
 from typing import Any
 
 import numpy as np
@@ -33,7 +34,13 @@ from app.models import (
     SatelliteAcquisition,
 )
 from app.satellite.chain import get_chain
-from app.satellite.grid import AOIGrid, AOITooLargeError, build_grid, mask_to_geojson, rasterize_geometry
+from app.satellite.grid import (
+    AOIGrid,
+    AOITooLargeError,
+    build_grid,
+    mask_to_geojson,
+    rasterize_geometry,
+)
 from app.satellite.provider import AcquisitionCandidate, ProviderAuthRequired, ProviderError
 from app.services.alerting import create_or_merge_alerts
 from app.services.analysis import (
@@ -45,8 +52,9 @@ from app.services.analysis import (
     build_change_map,
     clear_fraction,
     compute_indices,
-    scl_valid,
+    haze_mask,
     spectral_landcover,
+    usable_fraction,
 )
 from app.services.audit import record_audit
 from app.services.context import (
@@ -76,8 +84,18 @@ FINAL_RUN_STATES = {
 }
 ANALYSED_STATUSES = ("ANALYSED", "CHANGE")
 _MAX_BASELINE_ATTEMPTS = 6
+_MAX_BASELINE_AGE_DAYS = 330
 _MAX_REFERENCE_READS = 14
+_FULLY_COVERED = 0.95
+# A clear scene that cannot be analysed must not block the chronological queue behind it.
+_UNPROCESSABLE_STATUSES = ("NO_BASELINE", "ANALYSIS_ERROR")
 _MIN_COMPONENT_PIXELS = 4
+_REFERENCE_PREFERRED_DAYS = 20
+_LONG_PAIR_MARGIN_DAYS = 45
+_REFERENCE_PREFERRED_CLEAR = 0.95
+# Regions assessed per run. Only MAX_FINDINGS_PER_CASE are stored, material ones first, so a
+# small real change is never crowded out by hundreds of harvested fields.
+_MAX_REGIONS_ASSESSED = 300
 
 # Set during graceful shutdown; a run checks it at each stage boundary.
 shutdown_requested = threading.Event()
@@ -94,8 +112,12 @@ class RunInterrupted(Exception):
 @dataclass
 class ClearScene:
     scene: AcquisitionCandidate
-    scl: np.ndarray
+    scl: np.ndarray | None  # None when an earlier run already measured this scene as unusable.
     fraction: float
+    haze: np.ndarray | None = None
+
+    def valid(self, aoi_mask: np.ndarray) -> np.ndarray:
+        return analysis_valid(self.scl, aoi_mask, self.haze)
 
 
 def queue_monitoring_run(
@@ -326,9 +348,28 @@ class _SceneInspector:
         self.chain = get_chain()
 
     def inspect(self, scene: AcquisitionCandidate) -> ClearScene:
+        """Measure how usable a scene is, reading bands only if SCL already looks clear.
+
+        So a cloudy AOI costs one small read, while a scene SCL passes also gets the haze
+        test that SCL itself cannot do. Bands are cached, so nothing is read twice.
+        """
+
+        known = self.links.get(scene.product_id)
+        if (
+            known is not None
+            and known.aoi_clear_fraction is not None
+            and known.aoi_clear_fraction < settings.min_aoi_clear_fraction
+        ):
+            return ClearScene(scene, None, known.aoi_clear_fraction)
         scl = self.chain.read_scl(scene, self.grid)
         self.reads += 1
         fraction = clear_fraction(scl, self.aoi_mask)
+        haze: np.ndarray | None = None
+        if fraction >= settings.min_aoi_clear_fraction:
+            bands = self.chain.read_bands(scene, self.grid)
+            haze = haze_mask(bands)
+            del bands
+            fraction = usable_fraction(scl, haze, self.aoi_mask)
         link = self.links.get(scene.product_id)
         if link is not None:
             is_new = link.aoi_clear_fraction is None
@@ -349,13 +390,23 @@ class _SceneInspector:
                         "aoi_clear_fraction": round(fraction, 4),
                     },
                 )
-        return ClearScene(scene, scl, fraction)
+        return ClearScene(scene, scl, fraction, haze)
+
+    def scene_skipped(self, scene: AcquisitionCandidate) -> bool:
+        link = self.links.get(scene.product_id)
+        return link is not None and link.scene_status in _UNPROCESSABLE_STATUSES
 
     def best_of_date(self, scenes: list[AcquisitionCandidate]) -> ClearScene:
         """An AOI can straddle two tiles on one date; the better-covered record wins."""
 
-        results = [self.inspect(scene) for scene in scenes]
-        return max(results, key=lambda item: item.fraction)
+        best: ClearScene | None = None
+        for scene in scenes:
+            result = self.inspect(scene)
+            if best is None or result.fraction > best.fraction:
+                best = result
+            if best.fraction >= _FULLY_COVERED:
+                break
+        return best
 
 
 def _group_by_date(scenes: list[AcquisitionCandidate]) -> list[list[AcquisitionCandidate]]:
@@ -367,22 +418,67 @@ def _group_by_date(scenes: list[AcquisitionCandidate]) -> list[list[AcquisitionC
     return list(groups.values())
 
 
-def _select_after(
+@dataclass
+class AfterSelection:
+    """Result of choosing the scene to analyse next."""
+
+    scene: ClearScene | None = None
+    cloudy: list[ClearScene] = field(default_factory=list)
+    # New dates beyond the chosen scene, still to be worked through by follow-up runs.
+    more_pending: bool = False
+    skipped_for_catch_up: int = 0
+
+
+def _select_newest(
     inspector: _SceneInspector, groups: list[list[AcquisitionCandidate]], analysed: set[str]
-) -> tuple[ClearScene | None, list[ClearScene]]:
-    """Walk new scenes newest-first until one is clear. Returns (scene, cloudy ones seen)."""
+) -> AfterSelection:
+    """The newest clear scene that is newer than anything analysed yet."""
 
     newest_analysed = max(analysed) if analysed else ""
-    cloudy: list[ClearScene] = []
+    selection = AfterSelection()
     for group in groups:
-        date_key = group[0].date_key
-        if date_key <= newest_analysed or inspector.reads >= settings.max_scl_reads_per_run:
+        if group[0].date_key <= newest_analysed or inspector.reads >= settings.max_scl_reads_per_run:
             break
         best = inspector.best_of_date(group)
         if best.fraction >= settings.min_aoi_clear_fraction:
-            return best, cloudy
-        cloudy.append(best)
-    return None, cloudy
+            selection.scene = best
+            return selection
+        selection.cloudy.append(best)
+    return selection
+
+
+def _select_next_chronological(
+    inspector: _SceneInspector, groups: list[list[AcquisitionCandidate]], analysed: set[str]
+) -> AfterSelection:
+    """The oldest clear scene after the last analysed date, so no usable scene is skipped.
+
+    Backlog drains one scene per run through the AOI's queue. Beyond a bounded number of
+    dates, the oldest are given up, so a long outage cannot occupy a worker indefinitely.
+    """
+
+    newest_analysed = max(analysed)
+    pending = [
+        group
+        for group in groups
+        if group[0].date_key > newest_analysed
+        and not all(inspector.scene_skipped(scene) for scene in group)
+    ]
+    selection = AfterSelection()
+    limit = settings.max_catch_up_dates
+    if len(pending) > limit:
+        selection.skipped_for_catch_up = len(pending) - limit
+        pending = pending[:limit]  # Groups run newest first, so this keeps the newest.
+    for position, group in enumerate(reversed(pending)):
+        if inspector.reads >= settings.max_scl_reads_per_run:
+            selection.more_pending = True
+            break
+        best = inspector.best_of_date(group)
+        if best.fraction >= settings.min_aoi_clear_fraction:
+            selection.scene = best
+            selection.more_pending = position + 1 < len(pending)
+            break
+        selection.cloudy.append(best)
+    return selection
 
 
 def _select_baseline(
@@ -402,7 +498,7 @@ def _select_baseline(
         best = inspector.best_of_date(group)
         if best.fraction < settings.min_aoi_clear_fraction:
             continue
-        shared = (scl_valid(best.scl) & scl_valid(after.scl) & inspector.aoi_mask).sum()
+        shared = (best.valid(inspector.aoi_mask) & after.valid(inspector.aoi_mask)).sum()
         if shared / max(1, inspector.aoi_mask.sum()) >= settings.min_pair_valid_fraction:
             return best
         attempts += 1
@@ -411,14 +507,85 @@ def _select_baseline(
     return None
 
 
+def _replay_step_baseline(
+    db: Session, inspector: _SceneInspector, run: MonitoringRun, after: ClearScene
+) -> ClearScene | None:
+    """The scene the previous step of this replay analysed or stopped on, if it can serve."""
+
+    if run.origin != ORIGIN_REPLAY or not run.replay_id:
+        return None
+    previous = (
+        db.query(MonitoringRun)
+        .filter(
+            MonitoringRun.replay_id == run.replay_id,
+            MonitoringRun.as_of_date < run.as_of_date,
+            MonitoringRun.after_acquisition_id.isnot(None),
+        )
+        .order_by(MonitoringRun.as_of_date.desc())
+        .first()
+    )
+    if previous is None:
+        return None
+    acquisition = db.get(SatelliteAcquisition, previous.after_acquisition_id)
+    if acquisition is None:
+        return None
+    latest = after.scene.acquisition_datetime - timedelta(days=settings.monitoring_min_pair_gap_days)
+    if acquisition.acquisition_datetime > latest:
+        return None
+    scene = _scene_from_row(acquisition)
+    inspector.links.setdefault(
+        scene.product_id,
+        db.query(AOIAcquisition)
+        .filter(
+            AOIAcquisition.aoi_id == run.aoi_id, AOIAcquisition.acquisition_id == acquisition.id
+        )
+        .first(),
+    )
+    candidate = inspector.inspect(scene)
+    if candidate.fraction < settings.min_aoi_clear_fraction:
+        return None
+    shared = (candidate.valid(inspector.aoi_mask) & after.valid(inspector.aoi_mask)).sum()
+    if shared / max(1, inspector.aoi_mask.sum()) < settings.min_pair_valid_fraction:
+        return None
+    return candidate
+
+
+def _extended_baseline(
+    inspector: _SceneInspector,
+    geometry: dict[str, Any],
+    after: ClearScene,
+    window_start: datetime,
+) -> ClearScene | None:
+    earliest = after.scene.acquisition_datetime - timedelta(days=_MAX_BASELINE_AGE_DAYS)
+    if earliest >= window_start:
+        return None
+    try:
+        older = get_chain().search_scenes(geometry, earliest, window_start, limit=200)
+    except ProviderError as error:
+        logger.info("Extended baseline search failed: %s", error)
+        return None
+    if not older:
+        return None
+    inspector.links.update(_record_scenes(inspector.db, inspector.area, older))
+    return _select_baseline(inspector, _group_by_date(older), after)
+
+
 def _select_reference(
     inspector: _SceneInspector,
     geometry: dict[str, Any],
     after_day: datetime,
+    baseline_day: datetime,
 ) -> tuple[ClearScene | None, str | None]:
-    """The clear scene nearest the same date last year. Failure means an untested season."""
+    """The clear scene nearest the same date last year. Failure means an untested season.
 
-    target = after_day - timedelta(days=365)
+    The reference must predate the change being tested. Across a pair more than a year apart,
+    last year's scene may already show the change and would make it look seasonal, so the
+    same date is taken from as many years back as it takes to pass the baseline.
+    """
+
+    gap_days = (after_day - baseline_day).days
+    years_back = max(1, ceil((gap_days - _LONG_PAIR_MARGIN_DAYS) / 365))
+    target = after_day - timedelta(days=365 * years_back)
     window = timedelta(days=settings.seasonal_reference_window_days)
     try:
         scenes = get_chain().search_scenes(geometry, target - window, target + window, limit=120)
@@ -429,16 +596,27 @@ def _select_reference(
     inspector.links.update(_record_scenes(inspector.db, inspector.area, scenes))
     groups = _group_by_date(scenes)
     groups.sort(key=lambda group: abs((group[0].acquisition_datetime - target).total_seconds()))
+    acceptable: ClearScene | None = None
     for reads, group in enumerate(groups):
         if reads >= _MAX_REFERENCE_READS:
+            break
+        offset_days = abs((group[0].acquisition_datetime - target).days)
+        # A clear scene is required; a nearly cloud-free one is worth a few days' difference.
+        if acceptable is not None and offset_days > _REFERENCE_PREFERRED_DAYS:
             break
         try:
             best = inspector.best_of_date(group)
         except ProviderError as error:
+            if acceptable is not None:
+                break
             return None, f"Last year's scene could not be read: {error}"
-        if best.fraction >= settings.min_aoi_clear_fraction:
+        if best.fraction >= _REFERENCE_PREFERRED_CLEAR:
             return best, None
-    return None, None
+        if best.fraction >= settings.min_aoi_clear_fraction and (
+            acceptable is None or best.fraction > acceptable.fraction
+        ):
+            acceptable = best
+    return acceptable, None
 
 
 # Models -------------------------------------------------------------------------------
@@ -496,16 +674,18 @@ def _active_zones(
     matched: list[dict[str, Any]] = []
     public: list[dict[str, Any]] = []
     for zone in db.query(AuthorisedZone).all():
-        valid_from, valid_to = parse_date(zone.valid_from), parse_date(zone.valid_to)
-        if (valid_from and after_day < valid_from) or (valid_to and after_day > valid_to):
-            continue
-        geometry = load_json(zone.geometry_json, None)
-        if not geometry:
-            continue
+        # One bad stored zone costs that zone, never the run or any other AOI's run. With a
+        # malformed date it cannot be shown to be in force, so it authorises nothing.
         try:
+            valid_from, valid_to = parse_date(zone.valid_from), parse_date(zone.valid_to)
+            if (valid_from and after_day < valid_from) or (valid_to and after_day > valid_to):
+                continue
+            geometry = load_json(zone.geometry_json, None)
+            if not geometry:
+                continue
             mask = rasterize_geometry(geometry, grid)
-        except Exception as error:  # One bad zone geometry should not fail the run.
-            logger.warning("Authorised zone %s has unusable geometry: %s", zone.id, error)
+        except Exception as error:
+            logger.warning("Ignoring unusable authorised zone %s: %s", zone.id, error)
             continue
         if mask.any():
             payload = zone_payload(zone)
@@ -520,6 +700,7 @@ def _assessment_context(
     zones: list[dict[str, Any]],
     after_date: str,
     reference_date: str | None,
+    site_type: str | None = None,
 ) -> AssessmentContext:
     rainfall = raw.get("rainfall") or {}
     disasters = raw.get("disasters") or []
@@ -546,12 +727,14 @@ def _assessment_context(
             max_daily_mm=rainfall.get("max_daily_mm"),
             normal_mm=rainfall.get("normal_mm"),
             anomaly_percent=rainfall.get("anomaly_percent"),
+            peak_14d_mm=rainfall.get("peak_14d_mm"),
         ),
         flood_events=named("flood"),
         fire_events=named("fire"),
         landslide_events=named("landslide"),
         quarry_mask=quarry_mask,
         quarry_names=quarry_names,
+        site_type=site_type,
         protected_mask=protected_mask,
         protected_names=protected_names,
         zones=zones,
@@ -583,7 +766,9 @@ def _read_or_none(chain, scene: AcquisitionCandidate, grid: AOIGrid) -> np.ndarr
         return None
 
 
-def _run_pipeline(db: Session, run: MonitoringRun, area: MonitoringArea) -> None:
+def _run_pipeline(db: Session, run: MonitoringRun, area: MonitoringArea) -> bool:
+    """Returns True when more new scenes are waiting, so a follow-up run should be queued."""
+
     chain = get_chain()
     geometry = json.loads(area.geometry_json)
     grid = build_grid(geometry)
@@ -646,7 +831,7 @@ def _run_pipeline(db: Session, run: MonitoringRun, area: MonitoringArea) -> None
         _finish_without_case(
             db, run, area, "NO_SUITABLE_ACQUISITION", "The catalogue has no scenes for this AOI in the lookback window."
         )
-        return
+        return False
 
     _update_run(
         db,
@@ -658,18 +843,39 @@ def _run_pipeline(db: Session, run: MonitoringRun, area: MonitoringArea) -> None
     )
     inspector = _SceneInspector(db, area, grid, aoi_mask, links)
     groups = _group_by_date(scenes)
-    after, cloudy = _select_after(inspector, groups, _analysed_dates(db, area, run))
+    analysed = _analysed_dates(db, area, run)
+    # A live AOI works through every new scene in date order once it has a starting point: its
+    # first check takes only the newest scene, not the whole lookback. Replay sets its own
+    # dates, so it takes the newest scene at or before each one.
+    if run.origin == ORIGIN_LIVE and analysed:
+        selection = _select_next_chronological(inspector, groups, analysed)
+    else:
+        selection = _select_newest(inspector, groups, analysed)
+    if selection.skipped_for_catch_up:
+        logger.warning(
+            "%s: skipped %d older scene date(s) beyond the catch-up limit.",
+            area.name,
+            selection.skipped_for_catch_up,
+        )
+        record_audit(
+            db,
+            "monitoring_run",
+            run.id,
+            "catch_up_limit_applied",
+            {"dates_skipped": selection.skipped_for_catch_up, "limit": settings.max_catch_up_dates},
+        )
+    after, cloudy = selection.scene, selection.cloudy
     if after is None:
         if cloudy:
-            newest = cloudy[0]
+            newest = max(cloudy, key=lambda item: item.scene.acquisition_datetime)
             _finish_without_case(
                 db,
                 run,
                 area,
                 "NO_SUITABLE_ACQUISITION",
-                f"The newest scene ({newest.scene.date_key}) is only {newest.fraction:.0%} clear inside "
+                f"The newest scene ({newest.scene.date_key}) is only {newest.fraction:.0%} usable inside "
                 f"this AOI, below the {settings.min_aoi_clear_fraction:.0%} required. "
-                f"{len(cloudy)} new scene(s) were too cloudy.",
+                f"{len(cloudy)} new scene(s) were too cloudy or hazy.",
             )
         else:
             _finish_without_case(
@@ -679,24 +885,36 @@ def _run_pipeline(db: Session, run: MonitoringRun, area: MonitoringArea) -> None
                 "NO_NEW_ACQUISITION",
                 "No scene newer than the last analysed one has been published for this AOI yet.",
             )
-        return
+        return selection.more_pending
 
-    baseline = _select_baseline(inspector, groups, after)
+    run.after_acquisition_id = links[after.scene.product_id].acquisition_id
+    db.commit()
+    # A replay compares each step with the step before it, so change building up across the
+    # whole window is seen, not only change in the weeks just before each date.
+    baseline = _replay_step_baseline(db, inspector, run, after)
     if baseline is None:
+        baseline = _select_baseline(inspector, groups, after)
+    if baseline is None:
+        # A monsoon can hide the ground for longer than the normal lookback.
+        baseline = _extended_baseline(inspector, geometry, after, start)
+    if baseline is None:
+        if run.origin == ORIGIN_LIVE:
+            links[after.scene.product_id].scene_status = "NO_BASELINE"
         _finish_without_case(
             db,
             run,
             area,
             "NO_SUITABLE_ACQUISITION",
             f"Scene {after.scene.date_key} is clear, but no clear baseline at least "
-            f"{settings.monitoring_min_pair_gap_days} days earlier exists in the lookback window.",
+            f"{settings.monitoring_min_pair_gap_days} days earlier could be found.",
         )
-        return
+        return selection.more_pending
 
     after_day = after.scene.acquisition_datetime
-    reference, reference_problem = _select_reference(inspector, geometry, after_day)
-    after_link, before_link = links[after.scene.product_id], links[baseline.scene.product_id]
-    run.after_acquisition_id = after_link.acquisition_id
+    reference, reference_problem = _select_reference(
+        inspector, geometry, after_day, baseline.scene.acquisition_datetime
+    )
+    after_link, before_link = links[after.scene.product_id], inspector.links[baseline.scene.product_id]
     run.before_acquisition_id = before_link.acquisition_id
     _update_run(
         db,
@@ -717,7 +935,7 @@ def _run_pipeline(db: Session, run: MonitoringRun, area: MonitoringArea) -> None
         reference_problem = "Last year's scene could not be read."
         reference = None
 
-    valid = analysis_valid(after.scl, aoi_mask) & analysis_valid(baseline.scl, aoi_mask)
+    valid = after.valid(aoi_mask) & baseline.valid(aoi_mask)
     before_indices = compute_indices(before_bands)
     after_indices = compute_indices(after_bands)
 
@@ -741,7 +959,7 @@ def _run_pipeline(db: Session, run: MonitoringRun, area: MonitoringArea) -> None
         valid,
         sensitivity=area.sensitivity,
         min_pixels=min_pixels,
-        max_components=settings.max_findings_per_case,
+        max_components=_MAX_REGIONS_ASSESSED,
         probability=probability,
         model_threshold=model_threshold,
         method=method,
@@ -774,7 +992,7 @@ def _run_pipeline(db: Session, run: MonitoringRun, area: MonitoringArea) -> None
             f"Analysed {after.scene.date_key} against {baseline.scene.date_key}: "
             f"no region reached {area.min_change_area_m2:,.0f} m2.",
         )
-        return
+        return selection.more_pending
 
     _update_run(
         db,
@@ -785,7 +1003,11 @@ def _run_pipeline(db: Session, run: MonitoringRun, area: MonitoringArea) -> None
         message=f"{len(change_map.component_ids)} change region(s) found. Gathering rainfall, disaster and map context.",
     )
     raw_context = fetch_case_context(
-        area.center_lat, area.center_lon, load_json(area.bbox_json, []), after_day.date()
+        area.center_lat,
+        area.center_lon,
+        load_json(area.bbox_json, []),
+        after_day.date(),
+        baseline.scene.acquisition_datetime.date(),
     )
     zones, zones_public = _active_zones(db, grid, after_day.date())
     raw_context["authorised_zones"] = zones_public
@@ -795,6 +1017,7 @@ def _run_pipeline(db: Session, run: MonitoringRun, area: MonitoringArea) -> None
         zones,
         after.scene.date_key,
         reference.scene.date_key if reference else None,
+        area.site_type,
     )
 
     _update_run(
@@ -809,16 +1032,12 @@ def _run_pipeline(db: Session, run: MonitoringRun, area: MonitoringArea) -> None
         before_bands, after_bands, before_indices, after_indices, valid
     )
     reference_indices = compute_indices(reference_bands) if reference_bands is not None else None
-    reference_valid = (
-        analysis_valid(reference.scl, aoi_mask) if reference is not None else None
-    )
-    assessments = []
-    region_masks = []
+    reference_valid = reference.valid(aoi_mask) if reference is not None else None
+    assessed: list[tuple[Any, np.ndarray]] = []
     for identifier in change_map.component_ids:
         region = change_map.labels == identifier
-        region_masks.append(region)
-        assessments.append(
-            assess_region(
+        assessed.append(
+            (assess_region(
                 region,
                 change_map=change_map,
                 before_indices=before_indices,
@@ -832,9 +1051,23 @@ def _run_pipeline(db: Session, run: MonitoringRun, area: MonitoringArea) -> None
                 pixel_area_m2=grid.pixel_area_m2,
                 heavy_rain_mm=settings.heavy_rain_mm_14d,
                 extreme_rain_mm=settings.extreme_rain_mm_14d,
-            )
+            ), region)
         )
     del before_classes, after_classes, reference_indices
+    assessed.sort(key=lambda pair: (pair[0].verdict == "SEASONAL_BENIGN", -pair[0].area_m2))
+    regions_found = len(assessed)
+    assessed = assessed[: settings.max_findings_per_case]
+    assessments = [pair[0] for pair in assessed]
+    region_masks = [pair[1] for pair in assessed]
+    if landcover_method == "spectral-landcover":
+        for assessment in assessments:
+            assessment.reasons.append(
+                "The trained land-cover model was unavailable, so land cover came from a coarse "
+                "spectral rule that cannot recognise mines and separates crops from trees only by vigour."
+            )
+    evidence_labels = np.zeros(grid.shape, dtype=np.int32)
+    for index, region in enumerate(region_masks, start=1):
+        evidence_labels[region] = index
 
     _update_run(
         db,
@@ -853,7 +1086,7 @@ def _run_pipeline(db: Session, run: MonitoringRun, area: MonitoringArea) -> None
         valid=valid,
         ndvi_before=before_indices["ndvi"],
         ndvi_after=after_indices["ndvi"],
-        labels=change_map.labels,
+        labels=evidence_labels,
         verdicts=[item.verdict for item in assessments],
         reference=reference_bands,
     )
@@ -871,7 +1104,8 @@ def _run_pipeline(db: Session, run: MonitoringRun, area: MonitoringArea) -> None
         grid,
         quality,
         {
-            "regions": len(assessments),
+            "regions": regions_found,
+            "regions_stored": len(assessments),
             "changed_area_m2": sum(item.area_m2 for item in assessments),
             "categories": sorted({item.category for item in assessments}),
             "verdicts": sorted({item.verdict for item in assessments}),
@@ -1000,6 +1234,7 @@ def _run_pipeline(db: Session, run: MonitoringRun, area: MonitoringArea) -> None
         area.last_checked_at = utcnow()
     db.commit()
     del after_bands, before_bands, reference_bands, change_map, region_masks, regions_by_finding
+    del assessed, evidence_labels
 
     # Only now are the rows visible to other sessions, so only now may clients hear about them.
     for alert in created:
@@ -1018,7 +1253,7 @@ def _run_pipeline(db: Session, run: MonitoringRun, area: MonitoringArea) -> None
             message=f"Dispatching {len(alert_ids)} alert(s) to the responsible departments.",
         )
         dispatch_many(alert_ids)
-    benign = len(assessments) - len(material)
+    benign = regions_found - len(material)
     _update_run(
         db,
         run,
@@ -1028,10 +1263,11 @@ def _run_pipeline(db: Session, run: MonitoringRun, area: MonitoringArea) -> None
         status="COMPLETED",
         message=(
             f"Analysed {after.scene.date_key} against {baseline.scene.date_key}: "
-            f"{len(assessments)} region(s), {benign} seasonal or crop-cycle, {len(created)} new alert(s), "
+            f"{regions_found} region(s), {benign} seasonal or crop-cycle, {len(created)} new alert(s), "
             f"{len(updated)} repeat detection(s)."
         ),
     )
+    return selection.more_pending
 
 
 def _analysis_record(
@@ -1079,8 +1315,11 @@ def _schedule_next(db: Session, run: MonitoringRun, area: MonitoringArea | None)
     db.commit()
 
 
-def execute_monitoring_run(run_id: str) -> None:
-    """Run every stage for one queued run. All failures end in an auditable run state."""
+def execute_monitoring_run(run_id: str) -> bool:
+    """Run every stage for one queued run. All failures end in an auditable run state.
+
+    Returns True when this AOI has more new scenes waiting.
+    """
 
     db = SessionLocal()
     run: MonitoringRun | None = None
@@ -1089,7 +1328,7 @@ def execute_monitoring_run(run_id: str) -> None:
     try:
         run = db.get(MonitoringRun, run_id)
         if run is None:
-            return
+            return False
         area = db.get(MonitoringArea, run.aoi_id)
         if area is None:
             _update_run(
@@ -1102,7 +1341,7 @@ def execute_monitoring_run(run_id: str) -> None:
                 message="Monitoring area no longer exists.",
                 error_code="AOI_NOT_FOUND",
             )
-            return
+            return False
         name = area.name
         if area.status != "ACTIVE" and run.origin == ORIGIN_LIVE:
             _update_run(
@@ -1114,9 +1353,10 @@ def execute_monitoring_run(run_id: str) -> None:
                 status="SKIPPED_PAUSED",
                 message="The monitoring area is paused; no external data request was made.",
             )
-            return
-        _run_pipeline(db, run, area)
+            return False
+        more_pending = _run_pipeline(db, run, area)
         _schedule_next(db, run, area)
+        return more_pending
     except RunInterrupted:
         db.rollback()
         if run is not None:
@@ -1148,6 +1388,7 @@ def execute_monitoring_run(run_id: str) -> None:
         _fail(db, run, name, "UNEXPECTED_ERROR", "Monitoring stopped on an unexpected processing error.", error)
     finally:
         db.close()
+    return False
 
 
 def _fail(
@@ -1162,6 +1403,12 @@ def _fail(
     if run is None:
         return
     try:
+        if run.origin == ORIGIN_LIVE and code == "UNEXPECTED_ERROR" and run.after_acquisition_id:
+            # The same scene would fail the same way, so it must not hold up newer scenes.
+            db.query(AOIAcquisition).filter(
+                AOIAcquisition.aoi_id == run.aoi_id,
+                AOIAcquisition.acquisition_id == run.after_acquisition_id,
+            ).update({AOIAcquisition.scene_status: "ANALYSIS_ERROR"})
         if run.origin == ORIGIN_LIVE:
             area = db.get(MonitoringArea, run.aoi_id)
             if area is not None:

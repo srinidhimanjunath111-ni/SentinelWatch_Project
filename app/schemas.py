@@ -2,15 +2,26 @@
 
 from __future__ import annotations
 
+from datetime import date
 from typing import Any
 
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, Field, field_validator, model_validator
 
 from app.satellite.geometry import GeometryValidationError, validate_geometry
 from app.satellite.grid import AOITooLargeError, build_grid
 from app.vocabulary import ALERT_STATUSES, CATEGORIES, LEGACY_CATEGORY_MAP, ZONE_TYPES
 
 DEFAULT_AREA_CATEGORIES = ["DEFORESTATION", "MINING", "CONSTRUCTION", "URBANISATION", "OTHER_CHANGE"]
+
+
+def _calendar_date(value: str | None) -> str | None:
+    if value is None:
+        return value
+    try:
+        date.fromisoformat(value)
+    except ValueError as error:
+        raise ValueError(f"{value} is not a real calendar date; use YYYY-MM-DD.") from error
+    return value
 
 
 def _checked_aoi(value: dict[str, Any]) -> dict[str, Any]:
@@ -93,6 +104,11 @@ class ReplayRequest(BaseModel):
     end_date: str = Field(pattern=r"^\d{4}-\d{2}-\d{2}$")
     max_scenes: int = Field(default=6, ge=1, le=40)
     force: bool = False
+
+    @field_validator("start_date", "end_date")
+    @classmethod
+    def real_dates(cls, value: str) -> str:
+        return _calendar_date(value)
 
 
 class StatusUpdate(BaseModel):
@@ -179,6 +195,17 @@ class AuthorisedZoneCreate(BaseModel):
     valid_to: str | None = Field(default=None, pattern=r"^\d{4}-\d{2}-\d{2}$")
     source: str | None = Field(default=None, max_length=255)
     is_illustrative: bool = False
+
+    @field_validator("valid_from", "valid_to")
+    @classmethod
+    def real_dates(cls, value: str | None) -> str | None:
+        return _calendar_date(value)
+
+    @model_validator(mode="after")
+    def dates_in_order(self) -> AuthorisedZoneCreate:
+        if self.valid_from and self.valid_to and self.valid_from > self.valid_to:
+            raise ValueError("valid_from must not be after valid_to.")
+        return self
 
     @field_validator("zone_type")
     @classmethod

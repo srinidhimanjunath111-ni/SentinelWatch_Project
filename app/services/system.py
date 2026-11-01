@@ -58,17 +58,47 @@ def _checkpoint_present(model: dict[str, Any]) -> bool:
     return bool(checkpoint) and (_PROJECT_ROOT / str(checkpoint)).is_file()
 
 
+def _runtime_state(key: str) -> dict[str, Any]:
+    """What this process has actually loaded. Reading it never triggers a slow first load."""
+
+    from app.ml import inference
+
+    attribute = "_change_detector" if key == "change" else "_landcover_classifier"
+    model = getattr(inference, attribute, None)
+    if model is None:
+        return {"runtime_status": "NOT_LOADED", "available": False, "device": None, "unavailable_reason": None}
+    available = bool(getattr(model, "available", False))
+    checkpoint = getattr(model, "checkpoint", None)
+    missing = checkpoint is not None and not Path(checkpoint).is_file()
+    return {
+        "runtime_status": "LOADED" if available else ("NO_CHECKPOINT" if missing else "LOAD_FAILED"),
+        "available": available,
+        "device": getattr(model, "device", None) if available else None,
+        "unavailable_reason": getattr(model, "unavailable_reason", None),
+    }
+
+
 def models_payload(base_url: str) -> list[dict[str, Any]]:
-    """Registry entries plus truthful runtime status and absolute artifact URLs."""
+    """Registry facts plus what is really running, kept apart so neither overstates the other.
+
+    ``registry_status`` is what training recorded. ``status`` is the state a client should
+    display: it is READY only if the registry says so, the checkpoint exists, and this
+    process has not failed to load it.
+    """
 
     registry = {str(model.get("key")): model for model in read_registry()}
     output = []
     for key in _MODEL_KEYS:
         model = dict(registry.get(key) or {"key": key, "metrics": {}, "artifacts": {}, "datasets": []})
+        model["registry_status"] = model.get("status")
+        runtime = _runtime_state(key)
+        model.update(runtime)
         if key not in registry:
             model["status"] = "NOT_TRAINED"
         elif not _checkpoint_present(model):
             model["status"] = "CHECKPOINT_MISSING"
+        elif runtime["runtime_status"] == "LOAD_FAILED":
+            model["status"] = "LOAD_FAILED"
         artifacts = model.get("artifacts") or {}
         model["artifacts"] = {
             name: f"{base_url.rstrip('/')}/{str(path).lstrip('/')}" for name, path in artifacts.items()
@@ -78,16 +108,13 @@ def models_payload(base_url: str) -> list[dict[str, Any]]:
 
 
 def _model_runtime() -> dict[str, Any]:
-    """Which device the cached model singletons chose. Never triggers a slow first load."""
-
-    from app.ml import inference
-
-    change = getattr(inference, "_change_detector", None)
-    landcover = getattr(inference, "_landcover_classifier", None)
+    change, landcover = _runtime_state("change"), _runtime_state("landcover")
     return {
-        "change_available": bool(getattr(change, "available", False)),
-        "landcover_available": bool(getattr(landcover, "available", False)),
-        "device": getattr(change, "device", None) or getattr(landcover, "device", None) or "cpu",
+        "change_available": change["available"],
+        "landcover_available": landcover["available"],
+        "change_runtime": change["runtime_status"],
+        "landcover_runtime": landcover["runtime_status"],
+        "device": change["device"] or landcover["device"] or "cpu",
     }
 
 
@@ -168,6 +195,7 @@ def overview_payload(db: Session) -> dict[str, Any]:
     models = {
         model["key"]: {
             "status": model.get("status"),
+            "runtime_status": model.get("runtime_status"),
             "f1": (model.get("metrics") or {}).get("f1"),
         }
         for model in models_payload("")

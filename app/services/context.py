@@ -13,6 +13,7 @@ import logging
 import math
 import time
 from concurrent.futures import ThreadPoolExecutor
+from concurrent.futures import TimeoutError as FutureTimeout
 from datetime import date, timedelta
 from pathlib import Path
 from typing import Any
@@ -42,6 +43,7 @@ DEM_URL = (
 RAIN_WINDOW_DAYS = 14
 RAIN_PRIOR_YEARS = 3
 DISASTER_WINDOW_DAYS = 30
+DISASTER_WINDOW_MAX_DAYS = 180
 DISASTER_RADIUS_KM = 150.0
 # Past data does not change; recent data is refreshed in case the feed has caught up.
 _FINAL_AFTER_DAYS = 10
@@ -95,7 +97,8 @@ def _get_json(url: str, params: dict[str, Any], *, attempts: int = 2) -> Any:
                 follow_redirects=True,
             )
             response.raise_for_status()
-            return response.json()
+            # GDACS answers an empty result with an empty body rather than an empty list.
+            return response.json() if response.content.strip() else {}
         except (httpx.HTTPError, ValueError) as caught:
             error = caught
             if attempt + 1 < attempts:
@@ -113,7 +116,9 @@ def _distance_km(lat1: float, lon1: float, lat2: float, lon2: float) -> float:
 # Rainfall -----------------------------------------------------------------------------
 
 
-def _daily_precipitation(lat: float, lon: float, start: date, end: date) -> list[float | None]:
+def _rain_series(lat: float, lon: float, start: date, end: date) -> dict[str, float | None]:
+    """Daily rainfall by ISO date. One long request serves every window of a case."""
+
     key = f"{lat:.3f},{lon:.3f},{start},{end}"
     cached = _cache_get("rain", key, _ttl_for(end))
     if cached is not None:
@@ -129,41 +134,59 @@ def _daily_precipitation(lat: float, lon: float, start: date, end: date) -> list
             "timezone": "UTC",
         },
     )
-    values = (body.get("daily") or {}).get("precipitation_sum") or []
+    daily = body.get("daily") or {}
+    series = dict(zip(daily.get("time") or [], daily.get("precipitation_sum") or [], strict=False))
     # The archive lags by a few days, so recent gaps are filled from the forecast API.
-    if any(value is None for value in values) or not values:
-        past_days = (date.today() - start).days + 1
-        if past_days <= 92:
-            try:
-                recent = _get_json(
-                    OPEN_METEO_FORECAST,
-                    {
-                        "latitude": f"{lat:.4f}",
-                        "longitude": f"{lon:.4f}",
-                        "past_days": past_days,
-                        "forecast_days": 1,
-                        "daily": "precipitation_sum",
-                        "timezone": "UTC",
-                    },
-                )
-                daily = recent.get("daily") or {}
-                by_day = dict(zip(daily.get("time") or [], daily.get("precipitation_sum") or [], strict=False))
-                span = (end - start).days + 1
-                days = [(start + timedelta(days=offset)).isoformat() for offset in range(span)]
-                archive = dict(zip((body.get("daily") or {}).get("time") or days, values, strict=False))
-                values = [
-                    archive.get(day) if archive.get(day) is not None else by_day.get(day) for day in days
-                ]
-            except RuntimeError as error:
-                logger.info("Recent rainfall fallback unavailable: %s", error)
-    _cache_put("rain", key, values)
-    return values
+    recent_start = max(start, end - timedelta(days=13))
+    if (date.today() - end).days < _FINAL_AFTER_DAYS and any(
+        series.get((recent_start + timedelta(days=n)).isoformat()) is None
+        for n in range((end - recent_start).days + 1)
+    ):
+        try:
+            recent = _get_json(
+                OPEN_METEO_FORECAST,
+                {
+                    "latitude": f"{lat:.4f}",
+                    "longitude": f"{lon:.4f}",
+                    "past_days": (date.today() - recent_start).days + 1,
+                    "forecast_days": 1,
+                    "daily": "precipitation_sum",
+                    "timezone": "UTC",
+                },
+            ).get("daily") or {}
+            for day, value in zip(recent.get("time") or [], recent.get("precipitation_sum") or [], strict=False):
+                if series.get(day) is None and day <= end.isoformat():
+                    series[day] = value
+        except RuntimeError as error:
+            logger.info("Recent rainfall fallback unavailable: %s", error)
+    _cache_put("rain", key, series)
+    return series
 
 
-def fetch_rainfall(lat: float, lon: float, after_date: date) -> dict[str, Any]:
+def _window(series: dict[str, float | None], start: date, end: date) -> list[float | None]:
+    return [
+        series.get((start + timedelta(days=offset)).isoformat())
+        for offset in range((end - start).days + 1)
+    ]
+
+
+def _peak_14_day_total(values: list[float | None]) -> float | None:
+    known = [0.0 if value is None else float(value) for value in values]
+    if not known:
+        return None
+    window = np.ones(min(RAIN_WINDOW_DAYS, len(known)))
+    return round(float(np.convolve(known, window, mode="valid").max()), 1)
+
+
+def fetch_rainfall(
+    lat: float, lon: float, after_date: date, before_date: date | None = None
+) -> dict[str, Any]:
     start = after_date - timedelta(days=RAIN_WINDOW_DAYS - 1)
-    daily = _daily_precipitation(lat, lon, start, after_date)
-    present = [float(value) for value in daily if value is not None]
+    earliest = start - timedelta(days=366 * RAIN_PRIOR_YEARS)
+    if before_date is not None:
+        earliest = min(earliest, before_date)
+    series = _rain_series(lat, lon, earliest, after_date)
+    present = [float(value) for value in _window(series, start, after_date) if value is not None]
     if not present:
         raise RuntimeError("Open-Meteo returned no rainfall values for this window.")
     result: dict[str, Any] = {
@@ -181,17 +204,9 @@ def fetch_rainfall(lat: float, lon: float, after_date: date) -> dict[str, Any]:
     }
     totals: list[float] = []
     for years_back in range(1, RAIN_PRIOR_YEARS + 1):
-        try:
-            prior_start = start.replace(year=start.year - years_back)
-            prior_end = after_date.replace(year=after_date.year - years_back)
-        except ValueError:  # 29 February.
-            prior_start = start - timedelta(days=365 * years_back)
-            prior_end = after_date - timedelta(days=365 * years_back)
-        try:
-            values = _daily_precipitation(lat, lon, prior_start, prior_end)
-        except RuntimeError:
-            break
-        known = [float(value) for value in values if value is not None]
+        prior_start = start - timedelta(days=365 * years_back)
+        prior_end = after_date - timedelta(days=365 * years_back)
+        known = [float(v) for v in _window(series, prior_start, prior_end) if v is not None]
         if known:
             total = round(sum(known), 1)
             totals.append(total)
@@ -201,6 +216,11 @@ def fetch_rainfall(lat: float, lon: float, after_date: date) -> dict[str, Any]:
         result["normal_mm"] = round(normal, 1)
         if normal >= 1.0:
             result["anomaly_percent"] = round(100.0 * (result["total_mm"] - normal) / normal, 1)
+    # The change happened somewhere between the two scenes, so a storm weeks before the
+    # after scene still matters. Report the wettest 14 days of that whole gap too.
+    if before_date is not None and before_date < start:
+        result["peak_14d_mm"] = _peak_14_day_total(_window(series, before_date, after_date))
+        result["peak_since"] = before_date.isoformat()
     return result
 
 
@@ -232,8 +252,16 @@ def _point_from_geometry(geometry: dict[str, Any] | None) -> tuple[float, float]
     return None
 
 
-def fetch_eonet(lat: float, lon: float, after_date: date) -> list[dict[str, Any]]:
-    start = after_date - timedelta(days=DISASTER_WINDOW_DAYS)
+def _event_window_start(after_date: date, before_date: date | None) -> date:
+    earliest = after_date - timedelta(days=DISASTER_WINDOW_MAX_DAYS)
+    candidate = before_date or after_date - timedelta(days=DISASTER_WINDOW_DAYS)
+    return max(earliest, min(candidate, after_date - timedelta(days=DISASTER_WINDOW_DAYS)))
+
+
+def fetch_eonet(
+    lat: float, lon: float, after_date: date, before_date: date | None = None
+) -> list[dict[str, Any]]:
+    start = _event_window_start(after_date, before_date)
     west, north, east, south = lon - 1.5, lat + 1.5, lon + 1.5, lat - 1.5
     key = f"{lat:.2f},{lon:.2f},{start},{after_date}"
     body = _cache_get("eonet", key, _ttl_for(after_date))
@@ -270,8 +298,10 @@ def fetch_eonet(lat: float, lon: float, after_date: date) -> list[dict[str, Any]
     return events
 
 
-def fetch_gdacs(lat: float, lon: float, after_date: date) -> list[dict[str, Any]]:
-    start = after_date - timedelta(days=DISASTER_WINDOW_DAYS)
+def fetch_gdacs(
+    lat: float, lon: float, after_date: date, before_date: date | None = None
+) -> list[dict[str, Any]]:
+    start = _event_window_start(after_date, before_date)
     key = f"{start},{after_date}"
     body = _cache_get("gdacs", key, _ttl_for(after_date))
     if body is None:
@@ -387,7 +417,7 @@ def fetch_osm_features(bbox: list[float]) -> list[dict[str, Any]]:
             response = httpx.post(
                 mirror,
                 data={"data": query},
-                timeout=max(settings.context_timeout_seconds, 30.0),
+                timeout=settings.context_timeout_seconds,
                 headers={"User-Agent": settings.context_user_agent},
             )
             response.raise_for_status()
@@ -490,9 +520,13 @@ def read_slope_degrees(grid: AOIGrid) -> np.ndarray | None:
 
 
 def fetch_case_context(
-    lat: float, lon: float, bbox: list[float], after_date: date
+    lat: float, lon: float, bbox: list[float], after_date: date, before_date: date | None = None
 ) -> dict[str, Any]:
-    """Query every source concurrently, recording each failure instead of raising it."""
+    """Query every source concurrently within a time budget, recording what was missed.
+
+    A slow source cannot hold up an alert: it is marked unavailable for this case, while
+    its thread finishes in the background and caches the answer for the next run.
+    """
 
     context: dict[str, Any] = {
         "rainfall": {"available": False},
@@ -502,16 +536,23 @@ def fetch_case_context(
         "unavailable": [],
     }
     jobs = {
-        "rainfall": lambda: fetch_rainfall(lat, lon, after_date),
-        "eonet": lambda: fetch_eonet(lat, lon, after_date),
-        "gdacs": lambda: fetch_gdacs(lat, lon, after_date),
+        "rainfall": lambda: fetch_rainfall(lat, lon, after_date, before_date),
+        "eonet": lambda: fetch_eonet(lat, lon, after_date, before_date),
+        "gdacs": lambda: fetch_gdacs(lat, lon, after_date, before_date),
         "osm": lambda: fetch_osm_features(bbox),
     }
-    with ThreadPoolExecutor(max_workers=len(jobs), thread_name_prefix="context") as pool:
-        futures = {name: pool.submit(job) for name, job in jobs.items()}
+    pool = ThreadPoolExecutor(max_workers=len(jobs), thread_name_prefix="context")
+    futures = {name: pool.submit(job) for name, job in jobs.items()}
+    deadline = time.monotonic() + settings.context_budget_seconds
+    try:
         for name, future in futures.items():
             try:
-                value = future.result()
+                value = future.result(timeout=max(0.0, deadline - time.monotonic()))
+            except FutureTimeout:
+                context["unavailable"].append(
+                    {"source": name, "reason": "No answer within the time budget for this case."}
+                )
+                continue
             except Exception as error:  # Context is optional by design; record and continue.
                 logger.info("Context source %s unavailable: %s", name, error)
                 context["unavailable"].append({"source": name, "reason": str(error)[:300]})
@@ -522,6 +563,8 @@ def fetch_case_context(
                 context["disasters"].extend(value)
             else:
                 context["osm_features"] = value
+    finally:
+        pool.shutdown(wait=False)
     return context
 
 

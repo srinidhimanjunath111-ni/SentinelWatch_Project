@@ -4,7 +4,8 @@ from __future__ import annotations
 
 import json
 import uuid
-from datetime import datetime, timedelta
+from concurrent.futures import ThreadPoolExecutor
+from datetime import date, datetime, timedelta
 from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
@@ -42,9 +43,8 @@ from app.vocabulary import ACTIVE_ALERT_STATUSES, ORIGIN_REPLAY
 
 router = APIRouter(prefix="/api", tags=["monitoring"])
 
-# Catalogue records above this tile-level cloud cover are unlikely to yield a clear window,
-# so replay spends its limited scene budget elsewhere. The run still measures SCL itself.
-_REPLAY_MAX_TILE_CLOUD = 80.0
+_REPLAY_MIN_RADIUS_DAYS = 15
+
 
 
 def _area_or_404(aoi_id: str, db: Session) -> MonitoringArea:
@@ -248,7 +248,9 @@ def delete_area(aoi_id: str, db: Session = Depends(get_db)) -> Response:
             status_code=status.HTTP_409_CONFLICT,
             detail="A monitoring run is active for this AOI. Wait for it to finish.",
         )
-    record_audit(db, "monitoring_area", area.id, "aoi_deleted")
+    record_audit(
+        db, "monitoring_area", area.id, "aoi_deleted", {"name": area.name, "site_key": area.site_key}
+    )
     db.query(CatalogueRefresh).filter(CatalogueRefresh.aoi_id == area.id).update(
         {CatalogueRefresh.aoi_id: None}
     )
@@ -277,6 +279,50 @@ def check_area_now(aoi_id: str, db: Session = Depends(get_db)):
     return run_payload(run)
 
 
+def _replay_dates(area: MonitoringArea, start: date, end: date, max_scenes: int) -> list[str]:
+    """Real scene dates spread evenly from start to end, nearest each even step.
+
+    Each step needs only a small catalogue search, so a multi-year window stays quick and
+    its first and last dates are the scenes closest to what was asked for. Tile cloud only
+    budgets the limited scene count here; each run still measures the AOI itself, and the
+    AOI's field can widen it for a known scene whose AOI was clear under a cloudy tile.
+    """
+
+    geometry = json.loads(area.geometry_json)
+    span = (end - start).days
+    count = 1 if span == 0 else max_scenes
+    targets = [
+        start + timedelta(days=round(span * index / max(1, count - 1))) if count > 1 else end
+        for index in range(count)
+    ]
+    radius = max(_REPLAY_MIN_RADIUS_DAYS, span // (2 * max(1, count - 1)))
+    chain = get_chain()
+
+    def nearest(target: date) -> str | None:
+        low = max(start, target - timedelta(days=radius))
+        high = min(end, target + timedelta(days=radius))
+        scenes = chain.search_scenes(
+            geometry,
+            datetime(low.year, low.month, low.day),
+            datetime(high.year, high.month, high.day, 23, 59, 59),
+            limit=100,
+        )
+        usable = [
+            scene
+            for scene in scenes
+            if scene.cloud_cover is None or scene.cloud_cover <= area.max_cloud_cover
+        ]
+        if not usable:
+            return None
+        moment = datetime(target.year, target.month, target.day)
+        best = min(usable, key=lambda scene: abs(scene.acquisition_datetime - moment))
+        return best.date_key
+
+    with ThreadPoolExecutor(max_workers=6, thread_name_prefix="replay-search") as pool:
+        found = list(pool.map(nearest, targets))
+    return sorted({value for value in found if value})
+
+
 @router.post("/areas/{aoi_id}/replay", status_code=status.HTTP_202_ACCEPTED)
 def replay_area(aoi_id: str, payload: ReplayRequest, db: Session = Depends(get_db)):
     """Walk real past scenes in date order through the same pipeline as a live check."""
@@ -294,32 +340,18 @@ def replay_area(aoi_id: str, payload: ReplayRequest, db: Session = Depends(get_d
             status_code=status.HTTP_409_CONFLICT,
             detail="A monitoring run is active for this area. Try again when it finishes.",
         )
-    window_start = datetime(start.year, start.month, start.day)
-    window_end = datetime(end.year, end.month, end.day, 23, 59, 59)
     try:
-        scenes = get_chain().search_scenes(json.loads(area.geometry_json), window_start, window_end)
+        dates = _replay_dates(area, start, end, payload.max_scenes)
     except ProviderError as error:
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
             detail=f"The imagery catalogue could not be reached: {error}",
         ) from error
-    dates = sorted(
-        {
-            scene.date_key
-            for scene in scenes
-            if scene.cloud_cover is None or scene.cloud_cover <= _REPLAY_MAX_TILE_CLOUD
-        }
-    )
     if not dates:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="No catalogue scenes with usable cloud cover exist in that date range.",
         )
-    # Spread a limited budget evenly over the window so a replay spans the whole period.
-    if len(dates) > payload.max_scenes:
-        step = (len(dates) - 1) / max(1, payload.max_scenes - 1)
-        dates = [dates[round(index * step)] for index in range(payload.max_scenes)]
-        dates = sorted(set(dates))
     replay_id = str(uuid.uuid4())
     run_ids = []
     for as_of in dates:

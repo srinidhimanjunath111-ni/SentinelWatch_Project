@@ -34,11 +34,26 @@ NODATA_CLASS = 255
 # Index change treated as meaningful on its own, per index at MEDIUM sensitivity.
 INDEX_THRESHOLDS = {"ndvi": 0.22, "nbr": 0.25, "ndwi": 0.25, "bsi": 0.13, "ndbi": 0.18}
 SENSITIVITY_SCALE = {"LOW": 1.3, "MEDIUM": 1.0, "HIGH": 0.8}
+# A pixel moving less than this share of an index's threshold counts as stable, and a common
+# shift is only trusted when at least this share of the pixels are stable.
+STABLE_TOLERANCE = 0.5
+MIN_STABLE_SHARE = 0.25
 # Model and spectral evidence share one 0-1 scale on which 0.5 means "changed".
 MODEL_WEIGHT = 0.6
 MIN_SPECTRAL_SUPPORT = 0.30
+# Spectral evidence this strong stands on its own, so a model trained elsewhere cannot veto it.
+STRONG_SPECTRAL = 0.75
 MASK_THRESHOLD = 0.5
 CLOUD_BUFFER_PIXELS = 3
+# Veil test, set against real scenes. Fog that SCL passed as clear (S2B_43RGM_20230114) lifts
+# even the darkest nearby pixels in blue and NIR. Clear land keeps some dark pixel, silted flood
+# water stays dark in NIR (S2B_43RGM_20230713), and bare soil fails because it is redder.
+HAZE_BLUR_PIXELS = 4.0
+HAZE_HOT_THRESHOLD = -0.03
+HAZE_DARK_FLOOR = 0.11
+HAZE_WINDOW_PIXELS = 21
+# Above this share of otherwise clear pixels, the scene as a whole is too veiled to compare.
+HAZE_REJECT_SHARE = 0.75
 
 BURN_DNBR = 0.27
 BURN_MAX_VISIBLE = 0.13
@@ -50,8 +65,17 @@ WATER_GAIN_NDWI_RISE = 0.25
 LANDSLIDE_MIN_SLOPE_DEGREES = 18.0
 LANDSLIDE_MAX_FILL = 0.55
 PERSISTS_FRACTION = 0.5
+# Seasonal requires positive similarity: most of the region within this share of each driving
+# index's threshold of last year's value, in either direction.
+SEASONAL_SIMILARITY = 0.6
+SEASONAL_MATCH_FRACTION = 0.6
 MIN_REFERENCE_COVERAGE = 0.5
 AUTHORISED_OVERLAP = 0.5
+# A region with no harmful cause pattern is kept as evidence but stays below the alert line.
+WEAK_CAUSE_STRENGTH = 0.15
+WEAK_CAUSE_CONFIDENCE_CAP = 0.55
+VEGETATION_GAIN_NDVI = 0.1
+_DARK_GROUND_SITES = ("mining", "infrastructure")
 
 
 @dataclass
@@ -73,6 +97,7 @@ class Rainfall:
     max_daily_mm: float | None = None
     normal_mm: float | None = None
     anomaly_percent: float | None = None
+    peak_14d_mm: float | None = None
 
 
 @dataclass
@@ -87,6 +112,8 @@ class AssessmentContext:
     landslide_events: list[str] = field(default_factory=list)
     quarry_mask: np.ndarray | None = None
     quarry_names: list[str] = field(default_factory=list)
+    # What the operator registered this AOI as, which is context for dark or bare change.
+    site_type: str | None = None
     protected_mask: np.ndarray | None = None
     protected_names: list[str] = field(default_factory=list)
     # [{"zone": dict, "mask": bool H x W}, ...], already filtered to dates in force.
@@ -152,13 +179,61 @@ def clear_fraction(scl: np.ndarray, aoi_mask: np.ndarray) -> float:
     return float((scl_valid(scl) & aoi_mask).sum()) / total
 
 
-def analysis_valid(scl: np.ndarray, aoi_mask: np.ndarray) -> np.ndarray:
+def haze_mask(scene: np.ndarray) -> np.ndarray:
+    """Pixels under fog, smoke or thin cloud that the SCL layer often misses.
+
+    A veil adds light everywhere, so the darkest pixel in a neighbourhood stays bright in both
+    blue and NIR. Bright soil, bright roofs and turbid water each fail one of the tests.
+    """
+
+    hot = scene[B02] - 0.5 * scene[B04] - 0.08
+    veiled = ndimage.gaussian_filter(hot, sigma=HAZE_BLUR_PIXELS) > HAZE_HOT_THRESHOLD
+    neutral = ndimage.gaussian_filter(scene[B02] - 0.9 * scene[B04], sigma=HAZE_BLUR_PIXELS) > 0
+    darkest_blue = ndimage.minimum_filter(scene[B02], size=HAZE_WINDOW_PIXELS)
+    darkest_nir = ndimage.minimum_filter(scene[B08], size=HAZE_WINDOW_PIXELS)
+    return veiled & neutral & (darkest_blue > HAZE_DARK_FLOOR) & (darkest_nir > HAZE_DARK_FLOOR)
+
+
+def usable_fraction(scl: np.ndarray, haze: np.ndarray, aoi_mask: np.ndarray) -> float:
+    """The AOI's clear fraction from SCL, unless a veil covers most of what SCL called clear."""
+
+    clear = scl_valid(scl) & aoi_mask
+    total = int(aoi_mask.sum())
+    if total == 0 or not clear.any():
+        return 0.0
+    if float((haze & clear).sum()) / int(clear.sum()) >= HAZE_REJECT_SHARE:
+        return float((clear & ~haze).sum()) / total
+    return float(clear.sum()) / total
+
+
+def analysis_valid(
+    scl: np.ndarray, aoi_mask: np.ndarray, haze: np.ndarray | None = None
+) -> np.ndarray:
     """Validity for comparison. Cloud edges are hazy, so invalid pixels get a small buffer."""
 
     bad = ~scl_valid(scl)
+    if haze is not None:
+        bad = bad | haze
     if bad.any():
         bad = ndimage.binary_dilation(bad, iterations=CLOUD_BUFFER_PIXELS)
     return ~bad & aoi_mask
+
+
+def stable_shift(delta: np.ndarray, pool: np.ndarray, tolerance: float) -> float:
+    """Common illumination or haze offset of an index difference, from stable pixels only.
+
+    Only pixels that barely moved may vote, so real change cannot define its own baseline.
+    When too few are left, for example because the whole window really did change, nothing
+    is subtracted and the absolute difference stands as the evidence.
+    """
+
+    if not pool.any():
+        return 0.0
+    values = delta[pool]
+    stable = values[np.abs(values) <= tolerance]
+    if stable.size < MIN_STABLE_SHARE * values.size:
+        return 0.0
+    return float(np.median(stable))
 
 
 def spectral_score(
@@ -169,9 +244,9 @@ def spectral_score(
 ) -> np.ndarray:
     """Per-pixel change evidence in [0,1], where 0.5 means an index crossed its threshold.
 
-    The AOI-wide median shift of each index is removed first. That cancels haze and
-    illumination differences, which move a whole window together, while a real local
-    change stands out against its surroundings.
+    A small common shift, measured on stable pixels, is removed first. That cancels haze and
+    illumination differences, which move a whole window together, without erasing a real
+    change however much of the window it covers.
     """
 
     scale = SENSITIVITY_SCALE.get(sensitivity.upper(), 1.0)
@@ -180,7 +255,7 @@ def spectral_score(
         return score
     for name, threshold in INDEX_THRESHOLDS.items():
         delta = after_indices[name] - before_indices[name]
-        delta = delta - float(np.median(delta[valid]))
+        delta = delta - stable_shift(delta, valid, STABLE_TOLERANCE * threshold)
         score = np.maximum(score, np.clip(np.abs(delta) / (2.0 * threshold * scale), 0.0, 1.0))
     # Light smoothing suppresses residual misregistration along field edges and roads.
     score = ndimage.gaussian_filter(score, sigma=1.0)
@@ -219,7 +294,10 @@ def build_change_map(
         ).astype(np.float32)
         fused = MODEL_WEIGHT * rescaled + (1.0 - MODEL_WEIGHT) * spectral
         fused[~valid] = 0.0
-        raw_mask = (fused >= MASK_THRESHOLD) & (spectral >= MIN_SPECTRAL_SUPPORT) & valid
+        raw_mask = (
+            ((fused >= MASK_THRESHOLD) & (spectral >= MIN_SPECTRAL_SUPPORT))
+            | (spectral >= STRONG_SPECTRAL)
+        ) & valid
 
     cleaned = ndimage.binary_opening(raw_mask, structure=np.ones((2, 2), dtype=bool))
     cleaned = ndimage.binary_closing(cleaned, structure=np.ones((3, 3), dtype=bool)) & valid
@@ -278,6 +356,21 @@ def _majority(classes: np.ndarray, region: np.ndarray) -> tuple[int | None, floa
     return index, float(counts[index]) / values.size
 
 
+@dataclass
+class SeasonalResult:
+    """Outcome of comparing a region with the same season last year.
+
+    ``persists`` is True when the change is still there, False only when the region positively
+    matches last year, and None when no reference exists or the comparison is inconclusive.
+    """
+
+    persists: bool | None
+    persist_fraction: float | None = None
+    similar_fraction: float | None = None
+    coverage: float = 0.0
+    status: str = "no_reference"
+
+
 def seasonal_test(
     region: np.ndarray,
     before_indices: dict[str, np.ndarray],
@@ -285,26 +378,31 @@ def seasonal_test(
     reference_indices: dict[str, np.ndarray] | None,
     reference_valid: np.ndarray | None,
     shared_valid: np.ndarray,
-) -> tuple[bool | None, float | None, float]:
+    changed: np.ndarray | None = None,
+) -> SeasonalResult:
     """Does this region still differ from the same season last year, the same way?
 
     Take the indices that drove the before-to-after change. The change persists if most
-    pixels also sit on the changed side of last year's value for that index. A forest that
-    lost its leaves looks like last winter's forest, so it fails this. A forest that was
-    cleared does not. The AOI-wide year-on-year median is removed first, so a generally
-    wetter or drier year does not count as change.
+    pixels sit on the changed side of last year's value. It is seasonal only if most pixels
+    are also close to last year's value in both directions. A forest that lost its leaves
+    looks like last winter's forest, a cleared forest does not, and a region unlike last year
+    in some other way is left undecided rather than excused as seasonal.
 
-    Returns (persists, fraction of region persisting, reference coverage of the region).
+    A year-on-year offset is removed using stable pixels outside the detected change, so a
+    generally wetter or drier year does not count as change.
     """
 
     if reference_indices is None or reference_valid is None:
-        return None, None, 0.0
+        return SeasonalResult(None)
     usable = region & reference_valid
     coverage = float(usable.sum()) / max(1, int(region.sum()))
     if coverage < MIN_REFERENCE_COVERAGE:
-        return None, None, coverage
-    aoi_common = shared_valid & reference_valid
-    best_fraction = 0.0
+        return SeasonalResult(None, coverage=coverage, status="low_coverage")
+    pool = shared_valid & reference_valid & ~region
+    if changed is not None:
+        pool &= ~changed
+    persist_fraction = 0.0
+    close = np.ones(int(usable.sum()), dtype=bool)
     drivers = 0
     for name, threshold in INDEX_THRESHOLDS.items():
         change = float(np.mean(after_indices[name][region] - before_indices[name][region]))
@@ -312,23 +410,31 @@ def seasonal_test(
             continue
         drivers += 1
         versus_reference = after_indices[name] - reference_indices[name]
-        if aoi_common.any():
-            versus_reference = versus_reference - float(np.median(versus_reference[aoi_common]))
+        versus_reference = versus_reference - stable_shift(
+            versus_reference, pool, STABLE_TOLERANCE * threshold
+        )
+        values = versus_reference[usable]
         direction = 1.0 if change > 0 else -1.0
         required = max(0.5 * abs(change), 0.5 * threshold)
-        fraction = float(np.mean(direction * versus_reference[usable] >= required))
-        best_fraction = max(best_fraction, fraction)
+        persist_fraction = max(persist_fraction, float(np.mean(direction * values >= required)))
+        close &= np.abs(values) <= SEASONAL_SIMILARITY * threshold
     if drivers == 0:
-        # A model-only region with no strong index shift: compare overall index distance.
+        # A model-only region with no strong index shift: compare every index with last year.
         distance = np.max(
             [
-                np.abs(after_indices[name] - reference_indices[name]) / threshold
+                np.abs(after_indices[name][usable] - reference_indices[name][usable]) / threshold
                 for name, threshold in INDEX_THRESHOLDS.items()
             ],
             axis=0,
         )
-        best_fraction = float(np.mean(distance[usable] >= 0.5))
-    return best_fraction >= PERSISTS_FRACTION, best_fraction, coverage
+        persist_fraction = float(np.mean(distance >= 1.0))
+        close = distance <= SEASONAL_SIMILARITY
+    similar_fraction = float(np.mean(close))
+    if persist_fraction >= PERSISTS_FRACTION:
+        return SeasonalResult(True, persist_fraction, similar_fraction, coverage, "persists")
+    if similar_fraction >= SEASONAL_MATCH_FRACTION:
+        return SeasonalResult(False, persist_fraction, similar_fraction, coverage, "seasonal")
+    return SeasonalResult(None, persist_fraction, similar_fraction, coverage, "inconclusive")
 
 
 def _names(values: list[str], limit: int = 3) -> str:
@@ -342,11 +448,19 @@ def _rain_sentence(rain: Rainfall) -> str:
     text = f"Rainfall totalled {rain.total_mm:.0f} mm over the 14 days before the scene"
     if rain.anomaly_percent is not None:
         text += f", {abs(rain.anomaly_percent):.0f}% {'above' if rain.anomaly_percent >= 0 else 'below'} the same window in prior years"
+    if rain.peak_14d_mm is not None:
+        text += f"; the wettest 14 days since the baseline scene brought {rain.peak_14d_mm:.0f} mm"
     return text + "."
 
 
+def _wettest_14_days(rain: Rainfall) -> float | None:
+    values = [value for value in (rain.total_mm, rain.peak_14d_mm) if value is not None]
+    return max(values) if rain.available and values else None
+
+
 def _heavy_rain(rain: Rainfall, heavy_mm: float) -> bool:
-    return bool(rain.available and rain.total_mm is not None and rain.total_mm >= heavy_mm)
+    wettest = _wettest_14_days(rain)
+    return wettest is not None and wettest >= heavy_mm
 
 
 def _classify_cause(
@@ -392,30 +506,31 @@ def _classify_cause(
     if to_class == MINE and from_class != MINE:
         reasons.append(f"Land cover moved from {from_name} to mine or quarry surface.")
         return "MINING", reasons, 0.9
-    if deltas["bsi"] >= MINING_BSI_RISE and (from_class == MINE or to_class == MINE or in_quarry >= QUARRY_OVERLAP):
-        where = (
-            f"inside a mapped quarry ({_names(context.quarry_names)})"
-            if in_quarry >= QUARRY_OVERLAP
-            else "on a surface already classed as mine"
+    # Being on a mining site only counts for ground that ends up bare. Fields around a mine
+    # still get harvested, which raises BSI too but leaves them vegetated or crop.
+    mining_site = context.site_type == "mining"
+    site_bare = mining_site and to_class == BARE
+    if mining_site and from_class == BARE and to_class == BARE and deltas["bsi"] < MINING_BSI_RISE:
+        reasons.append(
+            "Already bare ground changed on a site registered as a mining area, "
+            "consistent with benches or spoil moving."
         )
+        return "MINING", reasons, 0.6
+    if deltas["bsi"] >= MINING_BSI_RISE and (
+        from_class == MINE or to_class == MINE or in_quarry >= QUARRY_OVERLAP or site_bare
+    ):
+        if in_quarry >= QUARRY_OVERLAP:
+            where = f"inside a mapped quarry ({_names(context.quarry_names)})"
+        elif from_class == MINE or to_class == MINE:
+            where = "on a surface classed as mine"
+        else:
+            where = "on a site registered as a mining area"
         reasons.append(f"Exposed soil rose sharply (BSI +{deltas['bsi']:.2f}) {where}.")
         return "MINING", reasons, 0.8
 
-    # A burn is dark as well as low in NBR, which separates it from a bright fresh clearing.
-    # Harvested fields also lose NBR but are handled by the crop rule below.
-    dark_after = means["visible_after"] <= BURN_MAX_VISIBLE and means["nir_after"] <= BURN_MAX_NIR
-    if -deltas["nbr"] >= BURN_DNBR and from_class != CROP and (dark_after or context.fire_events):
-        reasons.append(
-            f"Burn severity index dNBR reached {-deltas['nbr']:.2f} and the surface darkened, "
-            "the spectral pattern of fire."
-        )
-        if context.fire_events:
-            reasons.append(f"Disaster feeds list a nearby fire: {_names(context.fire_events)}.")
-        return "BURN_SCAR", reasons, min(1.0, 0.6 + (-deltas["nbr"] - BURN_DNBR))
-
     # A landslide scar is narrow, on a steep slope, and follows extreme rain.
     vegetation_stripped = from_class in (TREE, SHRUB_GRASS, CROP) and to_class in (BARE, SHRUB_GRASS)
-    rain_extreme = bool(rain.available and rain.total_mm is not None and rain.total_mm >= extreme_rain_mm)
+    rain_extreme = _heavy_rain(rain, extreme_rain_mm)
     if vegetation_stripped and (rain_extreme or context.landslide_events) and context.slope_degrees is not None:
         slope = context.slope_degrees()
         if slope is not None:
@@ -429,6 +544,26 @@ def _classify_cause(
                 )
                 reasons.append(_rain_sentence(rain))
                 return "LANDSLIDE", reasons, 0.85
+
+    # A burn is dark as well as low in NBR, which separates it from a bright fresh clearing.
+    # Harvested fields also lose NBR but are handled by the crop rule below. On a mine or
+    # construction site dark fresh ground is usually coal or paving, so a burn needs a fire report.
+    dark_after = means["visible_after"] <= BURN_MAX_VISIBLE and means["nir_after"] <= BURN_MAX_NIR
+    burn_drop = -deltas["nbr"] >= BURN_DNBR and from_class != CROP
+    if burn_drop and dark_after and context.site_type == "infrastructure" and not context.fire_events:
+        reasons.append(
+            f"The surface turned dark (dNBR {-deltas['nbr']:.2f}) on a site registered as "
+            "infrastructure, consistent with new paving."
+        )
+        return "CONSTRUCTION", reasons, 0.7
+    if burn_drop and ((dark_after and context.site_type not in _DARK_GROUND_SITES) or context.fire_events):
+        reasons.append(
+            f"Burn severity index dNBR reached {-deltas['nbr']:.2f} and the surface darkened, "
+            "the spectral pattern of fire."
+        )
+        if context.fire_events:
+            reasons.append(f"Disaster feeds list a nearby fire: {_names(context.fire_events)}.")
+        return "BURN_SCAR", reasons, min(1.0, 0.6 + (-deltas["nbr"] - BURN_DNBR))
 
     if from_class == TREE and to_class in (BARE, SHRUB_GRASS):
         reasons.append(f"Tree cover became {to_name}: NDVI fell by {abs(deltas['ndvi']):.2f}.")
@@ -457,6 +592,18 @@ def _classify_cause(
     if deltas["bsi"] >= MINING_BSI_RISE:
         reasons.append(f"Exposed soil rose (BSI +{deltas['bsi']:.2f}) but no specific cause pattern matched.")
         return "OTHER_CHANGE", reasons, 0.5
+    if deltas["ndvi"] >= VEGETATION_GAIN_NDVI and deltas["bsi"] < 0:
+        reasons.append(
+            f"Vegetation increased (NDVI +{deltas['ndvi']:.2f}), which is regrowth or green-up, "
+            "not a pattern of damage."
+        )
+        return "OTHER_CHANGE", reasons, WEAK_CAUSE_STRENGTH
+    if from_class is not None and from_class == to_class:
+        reasons.append(
+            f"Land cover read as {from_name} both before and after, so this looks like a change "
+            "within that surface, such as moisture, turbidity or shadow, not a change of cover."
+        )
+        return "OTHER_CHANGE", reasons, WEAK_CAUSE_STRENGTH
     reasons.append(f"Land cover read as {from_name} before and {to_name} after, which matches no specific cause pattern.")
     return "OTHER_CHANGE", reasons, 0.4
 
@@ -500,23 +647,34 @@ def assess_region(
         from_class, to_class, deltas, means, region, built_nearby, context, heavy_rain_mm, extreme_rain_mm
     )
 
-    persists, fraction, coverage = seasonal_test(
+    seasonal = seasonal_test(
         region,
         before_indices,
         after_indices,
         reference_indices,
         reference_valid,
         change_map.valid,
+        change_map.mask,
     )
-    if persists is None:
-        if reference_indices is None:
-            reasons.append(
-                "No clear same-season scene from last year was available, so seasonality could not be tested."
-            )
-        else:
-            reasons.append(
-                f"Last year's same-season scene covered only {coverage:.0%} of this region, so seasonality could not be tested."
-            )
+    persists, fraction, coverage = seasonal.persists, seasonal.persist_fraction, seasonal.coverage
+    if seasonal.status == "no_reference":
+        reasons.append(
+            "No clear same-season scene from last year was available, so seasonality could not be tested."
+        )
+    elif seasonal.status == "low_coverage":
+        reasons.append(
+            f"Last year's same-season scene covered only {coverage:.0%} of this region, so seasonality could not be tested."
+        )
+    elif seasonal.status == "inconclusive":
+        reasons.append(
+            f"Compared with {context.reference_date} this region neither keeps the change nor "
+            f"matches last year ({seasonal.similar_fraction:.0%} similar), so seasonality is undecided."
+        )
+    elif persists and category == "CROP_CYCLE":
+        reasons.append(
+            f"This field differs from {context.reference_date} across {fraction:.0%} of the region, "
+            "which is usual when sowing dates shift between years."
+        )
     elif persists:
         reasons.append(
             f"Same-season comparison with {context.reference_date} still shows this change "
@@ -528,14 +686,16 @@ def assess_region(
         reasons.insert(
             0,
             f"Compared with the same season last year ({context.reference_date}) this region "
-            f"looks the same: only {fraction:.0%} of it still differs, so the change is seasonal.",
+            f"looks the same: {seasonal.similar_fraction:.0%} of it matches last year's values, "
+            "so the change is seasonal.",
         )
         verdict = SEASONAL_BENIGN
-        if category not in ("WATER_CHANGE", "FLOOD"):
-            uses_crop = CROP in (from_class, to_class)
-            category = "CROP_CYCLE" if uses_crop else "SEASONAL_VEGETATION"
-        else:
+        water_classes = (WATER, WETLAND)
+        if category in ("WATER_CHANGE", "FLOOD") or from_class in water_classes or to_class in water_classes:
+            # A lake's annual level is not vegetation, so the label stays honest about that.
             category = "WATER_CHANGE"
+        else:
+            category = "CROP_CYCLE" if CROP in (from_class, to_class) else "SEASONAL_VEGETATION"
     elif category == "CROP_CYCLE":
         verdict = SEASONAL_BENIGN
     elif category in HUMAN_CAUSED:
@@ -548,9 +708,15 @@ def assess_region(
                 sentence += f" (reference {detail['reference']})"
             if detail.get("authority"):
                 sentence += f", issued by {detail['authority']}"
-            reasons.append(sentence + ".")
+            reasons.append(sentence + ". This is a registry match, not a legal conclusion.")
+            if not detail.get("valid_to"):
+                reasons.append(
+                    "No expiry is recorded for this zone, which is not the same as permanent validity."
+                )
             if detail.get("is_illustrative"):
-                reasons.append("This zone is marked illustrative, not an official permit record.")
+                reasons.append(
+                    "This zone's footprint is marked illustrative: an approximate outline, not an official boundary."
+                )
         else:
             verdict = SUSPECTED_UNAUTHORISED
             reasons.append(
@@ -587,6 +753,8 @@ def assess_region(
     confidence = float(
         np.clip(0.5 * change_probability + 0.3 * rule_strength + 0.2 * seasonal_support, 0.0, 0.99)
     )
+    if rule_strength <= WEAK_CAUSE_STRENGTH:
+        confidence = min(confidence, WEAK_CAUSE_CONFIDENCE_CAP)
     return Assessment(
         category=category,
         verdict=verdict,
@@ -618,6 +786,10 @@ def assess_region(
             "built_nearby": round(built_nearby, 3),
             "rule_strength": round(rule_strength, 3),
             "seasonal_reference_coverage": round(coverage, 3),
+            "seasonal_status": seasonal.status,
+            "seasonal_similar_fraction": (
+                round(seasonal.similar_fraction, 3) if seasonal.similar_fraction is not None else None
+            ),
             "mean_spectral_score": round(float(np.mean(change_map.spectral[region])), 4),
             "mean_model_probability": (
                 round(float(np.mean(change_map.probability[region])), 4)

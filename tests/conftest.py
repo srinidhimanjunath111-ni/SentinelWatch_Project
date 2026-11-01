@@ -25,6 +25,7 @@ os.environ.update(
         "COPERNICUS_CLIENT_SECRET": "",
         "PROVIDER_BACKOFF_SECONDS": "0",
         "DISPATCH_BACKOFF_SECONDS": "0",
+        "PRELOAD_MODELS": "false",
     }
 )
 
@@ -71,3 +72,33 @@ def isolated_database(tmp_path, monkeypatch):
         Base.metadata.drop_all(bind=test_engine)
         database.SessionLocal.configure(bind=original_bind)
         test_engine.dispose()
+
+
+class _UnavailableModel:
+    available = False
+    device = "cpu"
+    threshold = 0.5
+
+
+@pytest.fixture(autouse=True)
+def models_unavailable(monkeypatch):
+    """No checkpoint loads in tests unless a test supplies its own stand-in."""
+
+    monkeypatch.setattr("app.services.monitoring.get_change_detector", _UnavailableModel)
+    monkeypatch.setattr("app.services.monitoring.get_landcover_classifier", _UnavailableModel)
+
+
+@pytest.fixture(autouse=True)
+def fresh_process_state():
+    """Clear state a real server holds for its lifetime, so tests cannot affect each other."""
+
+    from app.satellite.chain import set_chain
+    from app.services.events import bus
+    from app.services.monitoring import shutdown_requested
+
+    shutdown_requested.clear()
+    bus.reopen()
+    yield
+    set_chain(None)
+    shutdown_requested.clear()
+    bus.reopen()

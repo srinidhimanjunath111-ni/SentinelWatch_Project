@@ -27,10 +27,11 @@ class Settings:
     log_dir = Path(os.getenv("LOG_DIR", "logs"))
     log_level = os.getenv("LOG_LEVEL", "INFO").upper()
     pixel_resolution_m = float(os.getenv("PIXEL_RESOLUTION_M", "10"))
-    alert_confidence_threshold = float(os.getenv("ALERT_CONFIDENCE_THRESHOLD", "0.50"))
+    alert_confidence_threshold = float(os.getenv("ALERT_CONFIDENCE_THRESHOLD", "0.62"))
     max_findings_per_case = int(os.getenv("MAX_FINDINGS_PER_CASE", "25"))
     change_checkpoint = os.getenv("CHANGE_CHECKPOINT", "").strip()
     landcover_checkpoint = os.getenv("LANDCOVER_CHECKPOINT", "").strip()
+    preload_models = _flag("PRELOAD_MODELS", "true")
     model_registry_path = Path(os.getenv("MODEL_REGISTRY_PATH", "models/registry.json"))
     reports_ml_dir = Path(os.getenv("REPORTS_ML_DIR", "reports/ml"))
 
@@ -70,7 +71,9 @@ class Settings:
     min_aoi_clear_fraction = float(os.getenv("MIN_AOI_CLEAR_FRACTION", "0.60"))
     min_pair_valid_fraction = float(os.getenv("MIN_PAIR_VALID_FRACTION", "0.30"))
     seasonal_reference_window_days = int(os.getenv("SEASONAL_REFERENCE_WINDOW_DAYS", "45"))
-    max_scl_reads_per_run = int(os.getenv("MAX_SCL_READS_PER_RUN", "60"))
+    # After downtime, scenes are analysed oldest first up to this many of the newest dates.
+    max_catch_up_dates = int(os.getenv("MAX_CATCH_UP_DATES", "12"))
+    max_scl_reads_per_run = int(os.getenv("MAX_SCL_READS_PER_RUN", "150"))
     # The longest AOI side in 10 m pixels; 1024 px is about 10 km.
     max_aoi_request_pixels = int(os.getenv("MAX_AOI_REQUEST_PIXELS", "1024"))
 
@@ -83,6 +86,7 @@ class Settings:
 
     # External context (rainfall, disaster feeds, OpenStreetMap). Failures never fail a run.
     context_timeout_seconds = float(os.getenv("CONTEXT_TIMEOUT_SECONDS", "12"))
+    context_budget_seconds = float(os.getenv("CONTEXT_BUDGET_SECONDS", "15"))
     context_user_agent = os.getenv(
         "CONTEXT_USER_AGENT", "SentinelWatch/3.0 (final-year engineering project; contact via repository)"
     )

@@ -82,6 +82,8 @@ def area_payload(
         "site_type": area.site_type,
         "description": area.description,
         "sources": load_json(area.sources_json, []),
+        "site_key": area.site_key,
+        "suggested_replay": load_json(area.suggested_replay_json, None),
         "next_check_at": iso_z(area.next_check_at),
         "open_alerts": open_alerts,
         "last_scene": last_scene,

@@ -36,6 +36,14 @@ class ProviderResponseError(ProviderError):
     """Raised when a provider returns unusable or malformed data."""
 
 
+class AmbiguousRadiometry(ProviderError):
+    """This provider's record cannot say whether its pixels still carry the offset.
+
+    Not a service failure: the chain moves on to a provider whose radiometry is known,
+    without counting it against this provider's health.
+    """
+
+
 @dataclass(frozen=True)
 class AcquisitionCandidate:
     """One catalogue record of one Sentinel-2 tile on one date."""

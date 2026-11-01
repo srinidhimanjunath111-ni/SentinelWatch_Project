@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+import threading
 import time
 from contextlib import asynccontextmanager
 from pathlib import Path
@@ -20,7 +21,7 @@ from app.auth import router as auth_router
 from app.config import APP_VERSION, settings
 from app.logging_setup import configure_logging
 from app.migrations import migrate_schema
-from app.seed_sites import seed_sites_if_empty
+from app.seed_sites import apply_seed_files
 from app.services.events import bus, install_shutdown_hook, stream_events
 from app.services.scheduler import scheduler
 from app.services.storage import resolve_public_path
@@ -33,6 +34,18 @@ _started_monotonic = time.monotonic()
 _EVIDENCE_CACHE = "public, max-age=2592000, immutable"
 
 
+def _preload_models() -> None:
+    """Load models once, off the startup path, so status is honest and first runs are quick."""
+
+    try:
+        from app.ml.inference import get_change_detector, get_landcover_classifier
+
+        get_change_detector()
+        get_landcover_classifier()
+    except Exception:  # The pipeline degrades to spectral rules and reports that it did.
+        logger.exception("Model preload failed")
+
+
 @asynccontextmanager
 async def lifespan(_: FastAPI):
     settings.ensure_directories()
@@ -40,9 +53,10 @@ async def lifespan(_: FastAPI):
     bus.reopen()
     install_shutdown_hook()
     migrate_schema()
-    restored = restore_snapshot_if_empty()
-    if not restored:
-        seed_sites_if_empty()
+    restore_snapshot_if_empty()
+    apply_seed_files()
+    if settings.preload_models:
+        threading.Thread(target=_preload_models, name="model-preload", daemon=True).start()
     scheduler.start()
     logger.info("%s %s ready.", settings.app_name, APP_VERSION)
     try:

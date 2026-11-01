@@ -33,7 +33,7 @@ ACTIVE_RUN_STATES = ("QUEUED", "RUNNING")
 
 
 class MonitoringScheduler:
-    def __init__(self, workers: int | None = None, execute: Callable[[str], None] | None = None):
+    def __init__(self, workers: int | None = None, execute: Callable[[str], bool | None] | None = None):
         self.worker_count = workers or settings.scheduler_workers
         self._execute = execute or execute_monitoring_run
         self._condition = threading.Condition()
@@ -201,8 +201,11 @@ class MonitoringScheduler:
                 return
             aoi_id, run_id = work
             try:
-                self._execute(run_id)
+                more_pending = self._execute(run_id)
                 self._record_outcome(run_id)
+                if more_pending is True and not self._stop.is_set():
+                    # Behind every other AOI already waiting, so catch-up never starves them.
+                    self.queue_check(aoi_id, trigger="catch_up")
             except Exception as error:  # The worker must outlive anything a run can do.
                 logger.exception("Worker caught an error from run %s", run_id)
                 self.last_error = str(error)[:500]

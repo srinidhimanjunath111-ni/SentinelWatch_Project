@@ -24,6 +24,9 @@ _ADDITIVE_COLUMNS: dict[str, dict[str, str]] = {
         "description": "TEXT",
         "sources_json": "TEXT",
         "next_check_at": "DATETIME",
+        "site_key": "VARCHAR(64)",
+        "seed_hash": "VARCHAR(64)",
+        "suggested_replay_json": "TEXT",
     },
     "satellite_acquisitions": {
         "scene_key": "VARCHAR(64)",
@@ -111,6 +114,7 @@ _ADDITIVE_COLUMNS: dict[str, dict[str, str]] = {
 # create_all never adds an index to a table that already exists.
 _ADDITIVE_INDEXES = {
     "ix_monitoring_areas_next_check_at": ("monitoring_areas", "next_check_at"),
+    "ix_monitoring_areas_site_key": ("monitoring_areas", "site_key"),
     "ix_satellite_acquisitions_scene_key": ("satellite_acquisitions", "scene_key"),
     "ix_monitoring_runs_replay_id": ("monitoring_runs", "replay_id"),
     "ix_cases_origin": ("cases", "origin"),

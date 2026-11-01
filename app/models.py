@@ -49,6 +49,10 @@ class MonitoringArea(Base):
     description: Mapped[str | None] = mapped_column(Text, nullable=True)
     sources_json: Mapped[str | None] = mapped_column(Text, nullable=True)
     next_check_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True, index=True)
+    # Set on areas that come from app/data/monitored_sites.json, which reseeding matches on.
+    site_key: Mapped[str | None] = mapped_column(String(64), nullable=True, index=True)
+    seed_hash: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    suggested_replay_json: Mapped[str | None] = mapped_column(Text, nullable=True)
 
     acquisition_links: Mapped[list[AOIAcquisition]] = relationship(
         back_populates="area", cascade="all, delete-orphan"
