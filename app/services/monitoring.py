@@ -54,6 +54,7 @@ from app.services.analysis import (
     compute_indices,
     haze_mask,
     spectral_landcover,
+    split_by_transition,
     usable_fraction,
 )
 from app.services.audit import record_audit
@@ -75,6 +76,7 @@ logger = logging.getLogger(__name__)
 
 FINAL_RUN_STATES = {
     "COMPLETED",
+    "REPLAY_BASELINE",
     "COMPLETED_NO_SIGNIFICANT_CHANGE",
     "NO_NEW_ACQUISITION",
     "NO_SUITABLE_ACQUISITION",
@@ -95,7 +97,7 @@ _LONG_PAIR_MARGIN_DAYS = 45
 _REFERENCE_PREFERRED_CLEAR = 0.95
 # Regions assessed per run. Only MAX_FINDINGS_PER_CASE are stored, material ones first, so a
 # small real change is never crowded out by hundreds of harvested fields.
-_MAX_REGIONS_ASSESSED = 300
+_MAX_REGIONS_ASSESSED = 150
 
 # Set during graceful shutdown; a run checks it at each stage boundary.
 shutdown_requested = threading.Event()
@@ -508,6 +510,16 @@ def _select_baseline(
     return None
 
 
+def _is_replay_anchor(db: Session, run: MonitoringRun) -> bool:
+    """The first of several steps has nothing inside the replay to compare with."""
+
+    if run.origin != ORIGIN_REPLAY or not run.replay_id:
+        return False
+    steps = db.query(MonitoringRun.as_of_date).filter(MonitoringRun.replay_id == run.replay_id).all()
+    dates = {value for (value,) in steps}
+    return len(dates) > 1 and run.as_of_date == min(dates)
+
+
 def _replay_step_baseline(
     db: Session, inspector: _SceneInspector, run: MonitoringRun, after: ClearScene
 ) -> ClearScene | None:
@@ -702,6 +714,7 @@ def _assessment_context(
     after_date: str,
     reference_date: str | None,
     site_type: str | None = None,
+    gap_days: int | None = None,
 ) -> AssessmentContext:
     rainfall = raw.get("rainfall") or {}
     disasters = raw.get("disasters") or []
@@ -729,6 +742,7 @@ def _assessment_context(
             normal_mm=rainfall.get("normal_mm"),
             anomaly_percent=rainfall.get("anomaly_percent"),
             peak_14d_mm=rainfall.get("peak_14d_mm"),
+            gap_days=gap_days,
         ),
         flood_events=named("flood"),
         fire_events=named("fire"),
@@ -890,6 +904,17 @@ def _run_pipeline(db: Session, run: MonitoringRun, area: MonitoringArea) -> bool
 
     run.after_acquisition_id = links[after.scene.product_id].acquisition_id
     db.commit()
+    if _is_replay_anchor(db, run):
+        _update_run(
+            db,
+            run,
+            area.name,
+            stage="REPLAY_BASELINE",
+            progress=100,
+            status="REPLAY_BASELINE",
+            message=f"Scene {after.scene.date_key} is this replay's starting point; later steps compare against it.",
+        )
+        return False
     # A replay compares each step with the step before it, so change building up across the
     # whole window is seen, not only change in the weeks just before each date.
     baseline = _replay_step_baseline(db, inspector, run, after)
@@ -1020,6 +1045,7 @@ def _run_pipeline(db: Session, run: MonitoringRun, area: MonitoringArea) -> bool
         after.scene.date_key,
         reference.scene.date_key if reference else None,
         area.site_type,
+        (after_day - baseline.scene.acquisition_datetime).days,
     )
 
     _update_run(
@@ -1036,8 +1062,13 @@ def _run_pipeline(db: Session, run: MonitoringRun, area: MonitoringArea) -> bool
     reference_indices = compute_indices(reference_bands) if reference_bands is not None else None
     reference_valid = reference.valid(aoi_mask) if reference is not None else None
     assessed: list[tuple[Any, np.ndarray]] = []
-    for identifier in change_map.component_ids:
-        region = change_map.labels == identifier
+    for region in split_by_transition(
+        change_map.mask,
+        before_classes,
+        after_classes,
+        min_pixels=min_pixels,
+        max_regions=_MAX_REGIONS_ASSESSED,
+    ):
         assessed.append(
             (assess_region(
                 region,
@@ -1056,9 +1087,8 @@ def _run_pipeline(db: Session, run: MonitoringRun, area: MonitoringArea) -> bool
             ), region)
         )
     del before_classes, after_classes, reference_indices
-    assessed.sort(key=lambda pair: (pair[0].verdict == "SEASONAL_BENIGN", -pair[0].area_m2))
     regions_found = len(assessed)
-    assessed = assessed[: settings.max_findings_per_case]
+    assessed = _regions_to_store(assessed, settings.max_findings_per_case)
     assessments = [pair[0] for pair in assessed]
     region_masks = [pair[1] for pair in assessed]
     if landcover_method == "spectral-landcover":
@@ -1275,6 +1305,17 @@ def _run_pipeline(db: Session, run: MonitoringRun, area: MonitoringArea) -> bool
         ),
     )
     return selection.more_pending
+
+
+def _regions_to_store(assessed: list[tuple[Any, np.ndarray]], limit: int) -> list[tuple[Any, np.ndarray]]:
+    """Largest regions first, keeping a share for benign ones so the evidence shows them too."""
+
+    by_size = sorted(assessed, key=lambda pair: -pair[0].area_m2)
+    material = [pair for pair in by_size if pair[0].verdict != "SEASONAL_BENIGN"]
+    benign = [pair for pair in by_size if pair[0].verdict == "SEASONAL_BENIGN"]
+    reserved = min(len(benign), limit // 5)
+    kept_material = material[: limit - reserved]
+    return kept_material + benign[: limit - len(kept_material)]
 
 
 def _is_replay_case(db: Session, case_id: str) -> bool:

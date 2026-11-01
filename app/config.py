@@ -28,7 +28,7 @@ class Settings:
     log_level = os.getenv("LOG_LEVEL", "INFO").upper()
     pixel_resolution_m = float(os.getenv("PIXEL_RESOLUTION_M", "10"))
     alert_confidence_threshold = float(os.getenv("ALERT_CONFIDENCE_THRESHOLD", "0.62"))
-    max_findings_per_case = int(os.getenv("MAX_FINDINGS_PER_CASE", "25"))
+    max_findings_per_case = int(os.getenv("MAX_FINDINGS_PER_CASE", "40"))
     change_checkpoint = os.getenv("CHANGE_CHECKPOINT", "").strip()
     landcover_checkpoint = os.getenv("LANDCOVER_CHECKPOINT", "").strip()
     preload_models = _flag("PRELOAD_MODELS", "true")

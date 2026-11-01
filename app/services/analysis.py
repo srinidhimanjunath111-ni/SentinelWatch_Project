@@ -58,16 +58,24 @@ HAZE_REJECT_SHARE = 0.75
 BURN_DNBR = 0.27
 BURN_MAX_VISIBLE = 0.13
 BURN_MAX_NIR = 0.26
+BURN_MAX_NBR_AFTER = 0.1
 MINING_BSI_RISE = 0.15
 QUARRY_OVERLAP = 0.3
 CONSTRUCTION_NDBI_RISE = 0.15
 WATER_GAIN_NDWI_RISE = 0.25
+WATER_CLASS_NDWI_RISE = 0.1
+# Flood water drains within weeks, so a storm only corroborates water seen soon afterwards.
+# A landslide scar stays visible far longer.
+FLOOD_RAIN_MAX_GAP_DAYS = 60
+LANDSLIDE_RAIN_MAX_GAP_DAYS = 550
 LANDSLIDE_MIN_SLOPE_DEGREES = 18.0
+DEBRIS_RUNOUT_MIN_SLOPE_DEGREES = 5.0
 LANDSLIDE_MAX_FILL = 0.55
 PERSISTS_FRACTION = 0.5
-# Seasonal requires positive similarity: most of the region within this share of each driving
-# index's threshold of last year's value, in either direction.
+# Seasonal requires positive similarity: most of the region this close to last year's value of
+# each driving index, in either direction. The change persists when most of it remains.
 SEASONAL_SIMILARITY = 0.6
+PERSIST_CHANGE_SHARE = 0.75
 SEASONAL_MATCH_FRACTION = 0.6
 MIN_REFERENCE_COVERAGE = 0.5
 AUTHORISED_OVERLAP = 0.5
@@ -98,6 +106,7 @@ class Rainfall:
     normal_mm: float | None = None
     anomaly_percent: float | None = None
     peak_14d_mm: float | None = None
+    gap_days: int | None = None  # Days between the two scenes the peak was measured over.
 
 
 @dataclass
@@ -328,6 +337,47 @@ def build_change_map(
     )
 
 
+def split_by_transition(
+    mask: np.ndarray,
+    before_classes: np.ndarray,
+    after_classes: np.ndarray,
+    *,
+    min_pixels: int,
+    max_regions: int,
+) -> list[np.ndarray]:
+    """Cut the change mask into regions that each have one land-cover story.
+
+    Change is often contiguous across very different ground. At an airport seen across a
+    wheat season, the runway and the fields around it would otherwise form one region, whose
+    majority class is crop, and the runway would be lost inside a crop cycle.
+    """
+
+    structure = np.ones((3, 3), dtype=bool)
+    before = ndimage.median_filter(before_classes, size=3)
+    after = ndimage.median_filter(after_classes, size=3)
+    codes = before.astype(np.int32) * 256 + after.astype(np.int32)
+    regions: list[np.ndarray] = []
+    used = np.zeros(mask.shape, dtype=bool)
+
+    def collect(part: np.ndarray) -> None:
+        labels, count = ndimage.label(part, structure=structure)
+        if not count:
+            return
+        sizes = ndimage.sum_labels(np.ones_like(labels), labels, index=np.arange(1, count + 1))
+        for identifier, size in enumerate(sizes, start=1):
+            if size >= min_pixels:
+                region = labels == identifier
+                regions.append(region)
+                used[region] = True
+
+    for code in np.unique(codes[mask]):
+        collect(mask & (codes == code))
+    # Fragments too small alone are still real change, so they stay together as mixed regions.
+    collect(mask & ~used)
+    regions.sort(key=lambda region: int(region.sum()), reverse=True)
+    return regions[:max_regions]
+
+
 def spectral_landcover(scene: np.ndarray, indices: dict[str, np.ndarray], valid: np.ndarray) -> np.ndarray:
     """Coarse index-based land cover, used only while the trained classifier is unavailable.
 
@@ -415,9 +465,12 @@ def seasonal_test(
         )
         values = versus_reference[usable]
         direction = 1.0 if change > 0 else -1.0
-        required = max(0.5 * abs(change), 0.5 * threshold)
+        required = max(PERSIST_CHANGE_SHARE * abs(change), 0.5 * threshold)
         persist_fraction = max(persist_fraction, float(np.mean(direction * values >= required)))
-        close &= np.abs(values) <= SEASONAL_SIMILARITY * threshold
+        # Last year's value explains the change if it sits much nearer than the earlier scene.
+        # The allowance stays capped at one threshold, so a value far away never counts as near.
+        allowance = max(SEASONAL_SIMILARITY * threshold, min(SEASONAL_SIMILARITY * abs(change), threshold))
+        close &= np.abs(values) <= allowance
     if drivers == 0:
         # A model-only region with no strong index shift: compare every index with last year.
         distance = np.max(
@@ -453,14 +506,20 @@ def _rain_sentence(rain: Rainfall) -> str:
     return text + "."
 
 
-def _wettest_14_days(rain: Rainfall) -> float | None:
-    values = [value for value in (rain.total_mm, rain.peak_14d_mm) if value is not None]
-    return max(values) if rain.available and values else None
+def _rain_at_least(rain: Rainfall, millimetres: float, max_gap_days: int) -> bool:
+    """Was it this wet just before the scene, or in a gap short enough to still be relevant?"""
+
+    if not rain.available:
+        return False
+    if rain.total_mm is not None and rain.total_mm >= millimetres:
+        return True
+    if rain.peak_14d_mm is None or rain.peak_14d_mm < millimetres:
+        return False
+    return rain.gap_days is None or rain.gap_days <= max_gap_days
 
 
-def _heavy_rain(rain: Rainfall, heavy_mm: float) -> bool:
-    wettest = _wettest_14_days(rain)
-    return wettest is not None and wettest >= heavy_mm
+def _flood_rain(rain: Rainfall, heavy_mm: float) -> bool:
+    return _rain_at_least(rain, heavy_mm, FLOOD_RAIN_MAX_GAP_DAYS)
 
 
 def _classify_cause(
@@ -481,13 +540,20 @@ def _classify_cause(
     to_name = LANDCOVER_CLASSES[to_class] if to_class is not None else "unknown"
     rain = context.rainfall
 
+    in_quarry = 0.0
+    if context.quarry_mask is not None:
+        in_quarry = float(np.mean(context.quarry_mask[region]))
+    mining_site = context.site_type == "mining"
+
     # Water gain comes first: flood water sits on top of whatever the land cover was.
-    water_gain = to_class in (WATER, WETLAND) and from_class not in (WATER, WETLAND)
-    if water_gain or (deltas["ndwi"] >= WATER_GAIN_NDWI_RISE and means["ndwi_after"] > 0.0):
+    becomes_water = to_class in (WATER, WETLAND) and from_class not in (WATER, WETLAND)
+    if (becomes_water and deltas["ndwi"] >= WATER_CLASS_NDWI_RISE) or (
+        deltas["ndwi"] >= WATER_GAIN_NDWI_RISE and means["ndwi_after"] > 0.0
+    ):
         reasons.append(
             f"Water appeared where the earlier scene showed {from_name}: NDWI rose by {deltas['ndwi']:.2f}."
         )
-        if _heavy_rain(rain, heavy_rain_mm) or context.flood_events:
+        if not mining_site and (_flood_rain(rain, heavy_rain_mm) or context.flood_events):
             reasons.append(_rain_sentence(rain))
             if context.flood_events:
                 reasons.append(f"Disaster feeds list a nearby flood event: {_names(context.flood_events)}.")
@@ -499,20 +565,46 @@ def _classify_cause(
         reasons.append(f"Open water receded to {to_name}: NDWI changed by {deltas['ndwi']:.2f}.")
         return "WATER_CHANGE", reasons, 0.5
 
-    in_quarry = 0.0
-    if context.quarry_mask is not None:
-        in_quarry = float(np.mean(context.quarry_mask[region]))
+    # A landslide scar is narrow, on a steep slope, and follows extreme rain.
+    disaster_site = context.site_type == "disaster"
+    surface_stripped = to_class in (BARE, SHRUB_GRASS, MINE) and from_class in (
+        (TREE, SHRUB_GRASS, CROP, BUILT) if disaster_site else (TREE, SHRUB_GRASS, CROP)
+    )
+    rain_extreme = _rain_at_least(rain, extreme_rain_mm, LANDSLIDE_RAIN_MAX_GAP_DAYS)
+    if (
+        not mining_site
+        and surface_stripped
+        and (rain_extreme or context.landslide_events)
+        and context.slope_degrees is not None
+    ):
+        slope = context.slope_degrees()
+        if slope is not None:
+            mean_slope = float(np.mean(slope[region]))
+            ys, xs = np.where(region)
+            fill = float(region.sum()) / max(1, (int(np.ptp(ys)) + 1) * (int(np.ptp(xs)) + 1))
+            # A debris flow runs out along gentler valley floors and fills its box where it
+            # widens, so on a site registered as a disaster area rain and terrain decide.
+            steep_enough = mean_slope >= (
+                DEBRIS_RUNOUT_MIN_SLOPE_DEGREES if disaster_site else LANDSLIDE_MIN_SLOPE_DEGREES
+            )
+            if steep_enough and (fill <= LANDSLIDE_MAX_FILL or disaster_site):
+                reasons.append(
+                    f"A scar stripped {from_name} on a {mean_slope:.0f} degree slope "
+                    "(Copernicus 30 m terrain)."
+                )
+                reasons.append(_rain_sentence(rain))
+                return "LANDSLIDE", reasons, 0.85
 
     if to_class == MINE and from_class != MINE:
         reasons.append(f"Land cover moved from {from_name} to mine or quarry surface.")
         return "MINING", reasons, 0.9
     # Being on a mining site only counts for ground that ends up bare. Fields around a mine
     # still get harvested, which raises BSI too but leaves them vegetated or crop.
-    mining_site = context.site_type == "mining"
     site_bare = mining_site and to_class == BARE
-    if mining_site and from_class == BARE and to_class == BARE and deltas["bsi"] < MINING_BSI_RISE:
+    worked_ground = (BARE, MINE)
+    if mining_site and from_class in worked_ground and to_class in worked_ground and deltas["bsi"] < MINING_BSI_RISE:
         reasons.append(
-            "Already bare ground changed on a site registered as a mining area, "
+            "Already worked ground changed on a site registered as a mining area, "
             "consistent with benches or spoil moving."
         )
         return "MINING", reasons, 0.6
@@ -528,27 +620,12 @@ def _classify_cause(
         reasons.append(f"Exposed soil rose sharply (BSI +{deltas['bsi']:.2f}) {where}.")
         return "MINING", reasons, 0.8
 
-    # A landslide scar is narrow, on a steep slope, and follows extreme rain.
-    vegetation_stripped = from_class in (TREE, SHRUB_GRASS, CROP) and to_class in (BARE, SHRUB_GRASS)
-    rain_extreme = _heavy_rain(rain, extreme_rain_mm)
-    if vegetation_stripped and (rain_extreme or context.landslide_events) and context.slope_degrees is not None:
-        slope = context.slope_degrees()
-        if slope is not None:
-            mean_slope = float(np.mean(slope[region]))
-            ys, xs = np.where(region)
-            fill = float(region.sum()) / max(1, (int(np.ptp(ys)) + 1) * (int(np.ptp(xs)) + 1))
-            if mean_slope >= LANDSLIDE_MIN_SLOPE_DEGREES and fill <= LANDSLIDE_MAX_FILL:
-                reasons.append(
-                    f"A narrow scar stripped {from_name} on a {mean_slope:.0f} degree slope "
-                    "(Copernicus 30 m terrain)."
-                )
-                reasons.append(_rain_sentence(rain))
-                return "LANDSLIDE", reasons, 0.85
-
     # A burn is dark as well as low in NBR, which separates it from a bright fresh clearing.
     # Harvested fields also lose NBR but are handled by the crop rule below. On a mine or
     # construction site dark fresh ground is usually coal or paving, so a burn needs a fire report.
     dark_after = means["visible_after"] <= BURN_MAX_VISIBLE and means["nir_after"] <= BURN_MAX_NIR
+    # Forest browning in the dry season also loses NBR, but burned ground ends with almost none.
+    dark_after = dark_after and means["nbr_after"] <= BURN_MAX_NBR_AFTER
     burn_drop = -deltas["nbr"] >= BURN_DNBR and from_class != CROP
     if burn_drop and dark_after and context.site_type == "infrastructure" and not context.fire_events:
         reasons.append(
@@ -572,7 +649,10 @@ def _classify_cause(
     # Crop-to-bare is normally harvest or fallow, but crop-to-built is real conversion.
     becomes_built = to_class == BUILT and from_class in (CROP, SHRUB_GRASS, BARE, TREE)
     ndbi_rise = deltas["ndbi"] >= CONSTRUCTION_NDBI_RISE and deltas["ndvi"] < 0
-    if becomes_built or (ndbi_rise and from_class != CROP and to_class in (BUILT, BARE)):
+    # Harvests raise NDBI too, so crop only counts on a site registered as infrastructure,
+    # and a demolished or buried building is not new construction.
+    ndbi_source_ok = from_class != BUILT and (from_class != CROP or context.site_type == "infrastructure")
+    if becomes_built or (ndbi_rise and ndbi_source_ok and to_class in (BUILT, BARE)):
         if becomes_built:
             reasons.append(f"Land cover moved from {from_name} to built surface.")
         else:
@@ -634,9 +714,16 @@ def assess_region(
         "ndwi_after": float(np.mean(after_indices["ndwi"][region])),
         "visible_after": float(np.mean(after[[B02, B03, B04]][:, region])),
         "nir_after": float(np.mean(after[B08][region])),
+        "nbr_after": float(np.mean(after_indices["nbr"][region])),
     }
     from_class, from_share = _majority(before_classes, region)
     to_class, to_share = _majority(after_classes, region)
+    # The land-cover model calls much fresh bare ground "mine". Without a mining site or a mapped
+    # quarry to support that, the honest reading is bare ground.
+    quarry_share = float(np.mean(context.quarry_mask[region])) if context.quarry_mask is not None else 0.0
+    if context.site_type not in (None, "mining") and quarry_share < QUARRY_OVERLAP:
+        from_class = BARE if from_class == MINE else from_class
+        to_class = BARE if to_class == MINE else to_class
     from_name = LANDCOVER_CLASSES[from_class] if from_class is not None else None
     to_name = LANDCOVER_CLASSES[to_class] if to_class is not None else None
 
@@ -737,7 +824,6 @@ def assess_region(
                 f"({_names(context.protected_names) or 'unnamed'})."
             )
     if context.quarry_mask is not None and category != "MINING":
-        quarry_share = float(np.mean(context.quarry_mask[region]))
         if quarry_share >= 0.1:
             reasons.append(
                 f"{quarry_share:.0%} of the region overlaps a quarry mapped in OpenStreetMap "

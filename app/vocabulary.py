@@ -56,7 +56,8 @@ ORIGIN_REPLAY = "archive_replay"
 ZONE_TYPES = ("MINING", "CONSTRUCTION", "FORESTRY", "OTHER")
 # Which registered zone type can authorise which detected category.
 ZONE_AUTHORISES = {
-    "MINING": frozenset({"MINING"}),
+    # Clearing inside a registered mine footprint is part of working the mine.
+    "MINING": frozenset({"MINING", "DEFORESTATION"}),
     "CONSTRUCTION": frozenset({"CONSTRUCTION", "URBANISATION"}),
     "FORESTRY": frozenset({"DEFORESTATION"}),
     "OTHER": frozenset(HUMAN_CAUSED),

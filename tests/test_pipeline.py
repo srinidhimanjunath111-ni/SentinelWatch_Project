@@ -852,3 +852,16 @@ def test_crop_cycle_reasons_never_say_it_is_not_seasonal(monkeypatch):
     assert finding.seasonal_persists is True
     assert "not seasonal" not in finding.verdict_reasons_json
     assert "sowing dates" in finding.verdict_reasons_json
+
+
+def test_regrowth_never_alerts_and_benign_regions_keep_a_place_in_the_evidence():
+    from types import SimpleNamespace
+
+    from app.services.monitoring import _regions_to_store
+
+    material = [(SimpleNamespace(verdict="NEEDS_REVIEW", area_m2=100.0 + n), n) for n in range(50)]
+    benign = [(SimpleNamespace(verdict="SEASONAL_BENIGN", area_m2=9000.0 + n), n) for n in range(50)]
+    kept = _regions_to_store(material + benign, 40)
+    assert len(kept) == 40
+    assert sum(pair[0].verdict == "SEASONAL_BENIGN" for pair in kept) == 8
+    assert kept[0][0].area_m2 == 149.0

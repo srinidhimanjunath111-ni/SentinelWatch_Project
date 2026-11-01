@@ -19,7 +19,7 @@ from sqlalchemy.orm import Session, joinedload, selectinload
 
 from app.models import Alert, Case, Department, Finding, MonitoringArea
 from app.satellite.grid import AOIGrid, rasterize_geometry
-from app.services.analysis import severity_for
+from app.services.analysis import WEAK_CAUSE_STRENGTH, severity_for
 from app.services.audit import record_audit
 from app.vocabulary import (
     ACTIVE_ALERT_STATUSES,
@@ -143,17 +143,35 @@ def _note(finding: Finding, sentence: str) -> None:
     finding.verdict_reasons_json = json.dumps(reasons)
 
 
+def _weak_cause(finding: Finding) -> bool:
+    """Regrowth or a change within one surface type: evidence, never an alert on its own."""
+
+    evidence = json.loads(finding.evidence_json or "{}")
+    return evidence.get("rule_strength", 1.0) <= WEAK_CAUSE_STRENGTH
+
+
 def _alertable_findings(
     case: Case, area: MonitoringArea, confidence_threshold: float
 ) -> list[Finding]:
-    """The findings worth an alert. The rest stay as evidence, each saying why."""
+    """The findings worth an alert. The rest stay as evidence, each saying why.
+
+    The evidence bar applies per category and verdict: one strong region makes the kind of
+    change credible, and the alert then reports all of it, not only the strongest piece.
+    """
 
     selected = set(json.loads(area.categories_json or "[]"))
+    strongest: dict[tuple[str | None, str | None], float] = {}
+    candidates = [
+        finding
+        for finding in case.findings
+        if finding.verdict != SEASONAL_BENIGN and not _weak_cause(finding)
+    ]
+    for finding in candidates:
+        key = (finding.category, finding.verdict)
+        strongest[key] = max(strongest.get(key, 0.0), finding.confidence)
     eligible: list[Finding] = []
-    for finding in case.findings:
-        if finding.verdict == SEASONAL_BENIGN:
-            continue
-        if finding.confidence < confidence_threshold:
+    for finding in candidates:
+        if strongest[(finding.category, finding.verdict)] < confidence_threshold:
             _note(
                 finding,
                 f"Evidence score {finding.confidence:.2f} is below the alert threshold "

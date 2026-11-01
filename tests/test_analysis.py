@@ -375,3 +375,60 @@ def test_water_seasonal_label_stays_water():
     assessment = _assess(_scene(BARE), _scene(BARE, WATER), from_class=BARE_CLASS, to_class=WATER_CLASS, reference=_scene(BARE, WATER))
     assert assessment.verdict == "SEASONAL_BENIGN"
     assert assessment.category == "WATER_CHANGE"
+
+
+def test_crop_cleared_for_an_airport_is_construction_but_a_harvest_elsewhere_is_not():
+    site = AssessmentContext(site_type="infrastructure")
+    assessment = _assess(_scene(FOREST), _scene(FOREST, BARE), from_class=CROP_CLASS, to_class=BARE_CLASS, context=site)
+    assert assessment.category == "CONSTRUCTION"
+    other = AssessmentContext(site_type="forest")
+    assessment = _assess(_scene(FOREST), _scene(FOREST, BARE), from_class=CROP_CLASS, to_class=BARE_CLASS, context=other)
+    assert assessment.category == "CROP_CYCLE"
+
+
+def test_mine_class_needs_support_from_the_site_or_a_mapped_quarry():
+    site = AssessmentContext(site_type="infrastructure")
+    assessment = _assess(_scene(FOREST), _scene(FOREST, BARE), from_class=TREE, to_class=MINE, context=site)
+    assert assessment.category == "DEFORESTATION"
+    assert assessment.transition_to == "bare"
+    mine = AssessmentContext(site_type="mining")
+    assert _assess(_scene(FOREST), _scene(FOREST, BARE), from_class=TREE, to_class=MINE, context=mine).category == "MINING"
+
+
+def test_wide_debris_flow_on_a_disaster_site_is_a_landslide():
+    context = AssessmentContext(
+        site_type="disaster",
+        rainfall=Rainfall(available=True, total_mm=20.0, peak_14d_mm=500.0, gap_days=300),
+        slope_degrees=lambda: np.full(SHAPE, 30.0),
+    )
+    assessment = _assess(_scene(FOREST), _scene(FOREST, BARE), from_class=TREE, to_class=MINE, context=context)
+    assert (assessment.category, assessment.verdict) == ("LANDSLIDE", "NATURAL_EVENT")
+
+
+def test_old_storm_cannot_explain_water_seen_long_afterwards():
+    rain = Rainfall(available=True, total_mm=3.0, peak_14d_mm=600.0, gap_days=900)
+    assessment = _assess(_scene(BARE), _scene(BARE, WATER), from_class=BARE_CLASS, to_class=WATER_CLASS, context=AssessmentContext(rainfall=rain))
+    assert assessment.category == "WATER_CHANGE"
+    rain = Rainfall(available=True, total_mm=3.0, peak_14d_mm=600.0, gap_days=35)
+    assessment = _assess(_scene(BARE), _scene(BARE, WATER), from_class=BARE_CLASS, to_class=WATER_CLASS, context=AssessmentContext(rainfall=rain))
+    assert assessment.category == "FLOOD"
+
+
+def test_browning_forest_is_not_a_burn_scar():
+    browning = (0.05, 0.07, 0.08, 0.24, 0.20, 0.14)  # Loses NBR but keeps a clearly positive value.
+    assessment = _assess(_scene(FOREST), _scene(FOREST, browning), from_class=TREE, to_class=TREE)
+    assert assessment.category != "BURN_SCAR"
+
+
+def test_contiguous_change_is_split_by_land_cover_story():
+    from app.services.analysis import split_by_transition
+
+    mask = np.zeros(SHAPE, dtype=bool)
+    mask[10:50, 10:90] = True
+    before = np.full(SHAPE, CROP_CLASS, dtype=np.uint8)
+    after = np.full(SHAPE, CROP_CLASS, dtype=np.uint8)
+    after[10:50, 50:90] = BUILT_CLASS
+    regions = split_by_transition(mask, before, after, min_pixels=20, max_regions=10)
+    assert len(regions) == 2
+    assert all(np.mean(after[region] == np.median(after[region])) > 0.95 for region in regions)
+    assert sum(int(region.sum()) for region in regions) == int(mask.sum())

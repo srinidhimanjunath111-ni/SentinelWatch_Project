@@ -44,6 +44,7 @@ from app.vocabulary import ACTIVE_ALERT_STATUSES, ORIGIN_LIVE, ORIGIN_REPLAY
 router = APIRouter(prefix="/api", tags=["monitoring"])
 
 _REPLAY_MIN_RADIUS_DAYS = 15
+_REPLAY_MAX_RADIUS_DAYS = 45
 
 
 
@@ -315,7 +316,7 @@ def _replay_dates(area: MonitoringArea, start: date, end: date, max_scenes: int)
         start + timedelta(days=round(span * index / max(1, count - 1))) if count > 1 else end
         for index in range(count)
     ]
-    radius = max(_REPLAY_MIN_RADIUS_DAYS, span // (2 * max(1, count - 1)))
+    radius = min(_REPLAY_MAX_RADIUS_DAYS, max(_REPLAY_MIN_RADIUS_DAYS, span // (2 * max(1, count - 1))))
     chain = get_chain()
 
     def nearest(target: date) -> str | None:
