@@ -39,7 +39,7 @@ Manual macOS/Linux setup:
 
 ```sh
 python3.12 -m venv .venv
-.venv/bin/python -m pip install -r requirements-operational.txt
+.venv/bin/python -m pip install -r requirements-operational.txt scipy
 cp .env.example .env
 .venv/bin/python -m uvicorn app.main:app --host 127.0.0.1 --port 8000
 ```
@@ -48,14 +48,14 @@ Manual Windows PowerShell setup:
 
 ```powershell
 py -3.12 -m venv .venv
-.\.venv\Scripts\python.exe -m pip install -r requirements-operational.txt
+.\.venv\Scripts\python.exe -m pip install -r requirements-operational.txt scipy
 Copy-Item .env.example .env
 .\.venv\Scripts\python.exe -m uvicorn app.main:app --host 127.0.0.1 --port 8000
 ```
 
 Copy the configuration template only on first setup; preserve an existing `.env`. Open [the console](http://127.0.0.1:8000), [health](http://127.0.0.1:8000/api/health) or [API documentation](http://127.0.0.1:8000/docs). SQLite and storage directories are created at startup. Launch commands are instructions, not a claim that Windows or Linux execution was tested here.
 
-Operational dependencies support real raster processing and the labelled spectral fallback. Learned inference additionally needs `requirements-ml.txt` and compatible checkpoints. Training is still in progress at this documentation handoff; no measured model performance is asserted here. Read `/api/models` and `models/registry.json` for the installed model's actual status and evaluated facts. A loadable checkpoint and a held-out evaluation are different things.
+Fresh-install gap at inspection: `app/services/analysis.py` imports `scipy.ndimage`, but the operational requirements do not explicitly declare SciPy. The manual commands above include it as a temporary dependency workaround; the backend requirements and launch scripts need integrator reconciliation. These installation commands were not run here. Operational dependencies are intended to support real raster processing and the labelled spectral fallback. Learned inference additionally needs `requirements-ml.txt` and compatible checkpoints. Training is still in progress at this documentation handoff; no measured model performance is asserted here. Read `/api/models` and `models/registry.json` for the installed model's actual status and evaluated facts. A loadable checkpoint and a held-out evaluation are different things.
 
 ## Configuration
 
@@ -71,6 +71,8 @@ Settings are read from environment variables and, when python-dotenv is availabl
 | `MONITORING_LOOKBACK_DAYS`, `MONITORING_MIN_PAIR_GAP_DAYS` | Default 180-day search; baseline at least 20 days before the later image |
 | `MIN_AOI_CLEAR_FRACTION`, `MIN_PAIR_VALID_FRACTION` | Default 0.60 usable AOI coverage; 0.30 shared coverage for pair selection |
 | `SEASONAL_REFERENCE_WINDOW_DAYS` | Search within 45 days either side of the date 365 days before the later scene |
+| `MAX_CATCH_UP_DATES` | Default 12 recent dates retained for chronological live catch-up after an established baseline; older excess dates may be skipped and audited |
+| `PRELOAD_MODELS` | Background model warm-up at startup, enabled by default |
 | `MAX_AOI_REQUEST_PIXELS` | Default 1024 on the longest grid side, at 10 m; split larger sites |
 | `CHANGE_CHECKPOINT`, `LANDCOVER_CHECKPOINT` | Optional checkpoint overrides; expected installed paths are under `models/checkpoints/` |
 | `MODEL_REGISTRY_PATH`, `SENTINELWATCH_ML_DEVICE` | Registry path; optional inference device override (`cpu`, `mps`, `cuda`) |
@@ -88,7 +90,7 @@ The browser uses locally vendored Leaflet and JavaScript modules. FastAPI serves
 
 1. Create a site or open a seeded site; start a check or wait for its schedule.
 2. Query Earth Search, then Planetary Computer on provider failure; use CDSE only when configured. Read cropped COG windows and cache them.
-3. Select a usable later scene, an older baseline and, if available, a same-season reference from the previous year. Align six bands on one 10 m UTM grid; mask SCL cloud/shadow/no-data and buffer invalid edges.
+3. Select a usable later scene, an older baseline and, if available, a same-season reference from the previous year. Align six bands on one 10 m UTM grid; mask SCL cloud/shadow/no-data plus residual haze and buffer invalid edges.
 4. Run a Siamese U-Net when loadable, combined with spectral evidence; otherwise label the spectral fallback. Classify land cover with a single-date U-Net or an explicitly recorded spectral fallback.
 5. Classify connected regions, test seasonal persistence and date/type/overlap against registered zones. Store plain-language reasons and georeferenced evidence.
 6. Retain seasonal findings without alerts. Apply evidence/category filters and duplicate merging to other findings. Route eligible alerts to a department inbox immediately; use SMTP or save an unsent `.eml` with `OUTBOX_SAVED`.
@@ -129,6 +131,8 @@ These are resource-intensive reproduction instructions, **not commands run durin
 .venv/bin/python -m training.evaluate landcover --checkpoint data/processed/runs/landcover_v1/best.pt --report reports/ml/landcover_v1_test.json
 ```
 
+The change CLI also supports `--norm batch|group`, `--normalisation pooled|per_date` and `--ema-decay`; defaults are not a statement of the final selected model. Inference follows checkpoint-recorded preprocessing. Per-date normalisation can cancel broad atmospheric differences but can also erase widespread change. Preserve the actual run configuration.
+
 For a predeclared India-forest adaptation experiment, `training.train` accepts `--datasets oscd,india_forest`, `--india-share` and `--init-from`; evaluate its frozen checkpoint separately with `--dataset india_forest`. Keep validation for threshold/model selection and test for final reporting. Do not select a winner by repeatedly looking at test scores. OSCD uses city splits with validation cities removed from official training; the India datasets use geographic splits with margins.
 
 After selection, install the chosen change checkpoint as `models/checkpoints/change_siamese.pt` and the chosen land-cover checkpoint as `models/checkpoints/landcover_unet.pt`. Preserve their evaluation reports, then run:
@@ -141,7 +145,7 @@ Use the equivalent `.venv\Scripts\python.exe` on Windows. The registry builder m
 
 ## Deployment and verification
 
-The repository supplies a Dockerfile and Compose file. **Docker is not installed on this documentation machine; deployment is unverified here.** The inspected Dockerfile installs operational dependencies, not the ML extra. Confirm the final image includes the intended inference dependencies and checkpoints before presenting container model inference.
+The repository supplies a Dockerfile and Compose file. **Docker is not installed on this documentation machine; deployment is unverified here.** The inspected Dockerfile installs operational dependencies, not the ML extra, and those operational requirements omit the SciPy import needed by analysis. Confirm the final image includes the intended inference dependencies and checkpoints before presenting container model inference.
 
 ```sh
 docker compose up --build
@@ -153,6 +157,6 @@ Relevant checks for the integrator are `python -m pytest -q` and `python -m ruff
 
 ## Limits and presentation material
 
-Clouds, mixed pixels, registration error, seasonal water/vegetation, crop timing and weak reference labels can produce missed or false detections. Upsampling SWIR bands does not add 10 m detail. A land-cover label or a burn pattern does not prove cause or intent. Inference confidence and priority are evidence-ranking heuristics, not a probability of wrongdoing. The finite scene-reading budget and newest-first processing can skip historical observations; use replay to inspect selected past dates. The local registry is incomplete and illustrative zones remain illustrative.
+Clouds, mixed pixels, registration error, seasonal water/vegetation, crop timing and weak reference labels can produce missed or false detections. Upsampling SWIR bands does not add 10 m detail. A land-cover label or a burn pattern does not prove cause or intent. Inference confidence and priority are evidence-ranking heuristics, not a probability of wrongdoing. A first check starts at the newest usable scene; subsequent live checks drain newer dates chronologically within a bounded catch-up budget. Excess older dates can be skipped and audited; use replay to inspect selected past dates. The local registry is incomplete and illustrative zones remain illustrative.
 
 Read the [10-minute demo](docs/SentinelWatch_Demo_Guide.md), [speaking guide](docs/SentinelWatch_Review_Speaking_Guide.md), [viva questions](docs/SentinelWatch_Viva_Questions.md), [v3 release notes](RELEASE_NOTES.md) and [documentation index](docs/README.md). The old review PDF is obsolete; the integrator must remove it and build a new PDF from the final reconciled report. No new PDF was built in this task.

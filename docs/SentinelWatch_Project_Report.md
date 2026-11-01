@@ -102,20 +102,20 @@ Provider identity, product ID, acquisition time and method labels belong to the 
 ### 6.1 Scene selection and preprocessing
 
 1. Construct a snapped 10 m UTM grid for the AOI. Enforce the configured maximum side; larger areas must be split.
-2. Search a lookback interval and persist catalogue records, provider-independent scene keys and AOI links. Group products by date and consider later scenes newest-first.
-3. Measure clear fraction **inside the AOI** using SCL. Invalid labels are `0, 1, 3, 8, 9, 10` (no data/defective, shadow, cloud and cirrus). Tile-wide cloud metadata alone is insufficient.
+2. Search a lookback interval and persist catalogue records, provider-independent scene keys and AOI links. Group products by date. A first live check selects a newest usable scene; later live checks drain newer dates chronologically, within a bounded catch-up window.
+3. Measure clear fraction **inside the AOI** using SCL. Invalid labels are `0, 1, 3, 8, 9, 10` (no data/defective, shadow, cloud and cirrus). Tile-wide cloud metadata alone is insufficient. When SCL coverage passes, the inspector also reads bands and excludes a blurred Haze Optimised Transform mask based on blue/red contrast. This can reject residual fog/smoke but may also mask very large bright surfaces.
 4. Choose a new usable later scene, then a clear baseline at least the configured gap earlier with enough shared valid coverage. If the normal lookback has no baseline, the current code attempts an extended baseline search for long cloudy periods. Defaults are a 20-day minimum gap, 0.60 clear fraction and 0.30 pair coverage. These are code settings, not measured performance.
 5. Search near the later date minus 365 days for a usable seasonal reference; the configurable window defaults to ±45 days. Missing/insufficient reference is recorded as untested.
 6. Read `B02, B03, B04, B08, B11, B12` as float32 reflectance in `[0,1]`, shape `[6,H,W]`. Apply provider scale/offset logic. Bilinearly resample continuous bands, including SWIR from 20 m; use nearest neighbour for SCL. Upsampling does not create finer SWIR information.
-7. Intersect valid masks and buffer invalid edges by three pixels before comparison. Persist quality and no-pair/no-new-scene outcomes.
+7. Intersect SCL/haze-valid masks and buffer invalid edges by three pixels before comparison. Persist quality and no-pair/no-new-scene outcomes.
 
-The implementation uses a finite SCL-read budget and processes the newest eligible date first. It does not prove that every historical observation was analysed. Archive replay samples selected real dates over a requested past interval and submits separate serial runs; it is not a synthetic-data mode. Starting replay still requires catalogue access; already queued replay can reuse known metadata/cached imagery where available. Neither cache nor snapshot should be described as a new live acquisition.
+The implementation uses finite SCL reads and bounded live catch-up. After initialisation, newer dates are processed oldest-first and follow-up runs are queued fairly; dates beyond `MAX_CATCH_UP_DATES` can be skipped with an audit record. First checks and replay select the newest eligible scene at their effective date. This is not proof that every historical observation was analysed. Archive replay samples selected real dates over a requested past interval and submits separate serial runs; it is not a synthetic-data mode. Starting replay still requires catalogue access; already queued replay can reuse known metadata/cached imagery where available. Neither cache nor snapshot should be described as a new live acquisition.
 
 ### 6.2 Change and land-cover networks
 
 `SiameseUNet` uses one shared encoder for both dates. Absolute feature differences at multiple scales feed a decoder producing one change logit per pixel. This makes the feature comparison symmetric; direction comes later from before/after land-cover labels and index deltas. The architecture follows the FC-Siam-diff idea [1] with repository-specific blocks and preprocessing.
 
-The change model uses per-band median/IQR statistics pooled across both dates. Pooling preserves inter-date contrast better than independently centring each date. Scale floors and clipping limit amplification in uniform scenes. This reduces first-order L1C/L2A radiometric differences; it does not prove domain invariance.
+The change model supports checkpoint-selected per-band median/IQR normalisation. The default pooled mode estimates statistics across both dates, preserving inter-date contrast better than independently centring each date. The alternative per-date mode cancels more date-to-date atmospheric/illumination difference but can erase change covering most of an AOI. Training records the chosen mode and inference follows it; do not assume the installed checkpoint uses the default. Scale floors and clipping limit amplification in uniform scenes. Neither mode proves L1C/L2A domain invariance. Batch/group feature normalisation and optional exponential moving average weights are also training choices; cite the final saved configuration.
 
 `LandCoverUNet` is a single-date encoder-decoder with eight classes: `tree`, `shrub_grass`, `crop`, `built`, `bare`, `water`, `wetland`, `mine`. It uses training-set band statistics stored with its checkpoint. Overlapping inference windows are blended; invalid land-cover pixels have class 255, and invalid change pixels receive zero. Concurrent inference is guarded by locks and cached model instances.
 
@@ -131,9 +131,9 @@ For bands on the common grid:
 - `BSI = ((B11 + B04) − (B08 + B02))/((B11 + B04) + (B08 + B02))` for exposed soil.
 - `NDBI = (B11 − B08)/(B11 + B08)` for built/bare-surface evidence.
 
-Safe division handles near-zero denominators. For each index the baseline subtracts the AOI median inter-date shift, scales its absolute residual against a sensitivity-adjusted threshold, takes the strongest index and smooths it. Median removal suppresses broad radiometric shifts but can also suppress truly widespread changes; pooled neural preprocessing does not remove that limitation of the spectral gate.
+Safe division handles near-zero denominators. For each index the baseline estimates a small common shift only from pixels whose absolute index difference is within half that index threshold. At least one quarter of the candidate pixels must satisfy that stability criterion; otherwise no shift is subtracted. The median of those stable values is removed, then the absolute residual is scaled against a sensitivity-adjusted threshold. The strongest index is smoothed. This avoids defining the offset from changed pixels, but stability selection and thresholds still require independent validation.
 
-With a model, probabilities are rescaled so the checkpoint's validation-selected threshold maps to 0.5. The code blends model evidence with spectral evidence (weights 0.6 and 0.4), thresholds the fused map at 0.5, and also requires spectral support of at least 0.30. These are design constants, not evaluation scores. Without the model, the spectral map is thresholded alone. Binary opening/closing suppress small noise, eight-connected components form regions, and minimum-area/count limits remove small or excess components. Area equals retained pixels times the projected grid pixel area.
+With a model, probabilities are rescaled so the checkpoint's validation-selected threshold maps to 0.5. The code blends model evidence with spectral evidence (weights 0.6 and 0.4), thresholds the fused map at 0.5, and also requires spectral support of at least 0.30 on the fused branch. Strong spectral evidence of at least 0.75 can independently retain a pixel so an out-of-domain model cannot veto it. These are design constants, not evaluation scores. Without the model, the spectral map is thresholded alone. Binary opening/closing suppress small noise, eight-connected components form regions, and minimum-area/count limits remove small or excess components. Area equals retained pixels times the projected grid pixel area.
 
 ### 6.4 Cause rules: order matters
 
@@ -143,13 +143,13 @@ This table follows `_classify_cause` in `app/services/analysis.py`. Deltas mean 
 |---|---|---|
 | 1 | New water/wetland or NDWI rise ≥0.25 with positive later NDWI | `FLOOD` if heavy rainfall or a flood feed corroborates; otherwise `WATER_CHANGE` |
 | 2 | Water/wetland recedes to another known class | `WATER_CHANGE` |
-| 3 | Transition into mine class; or BSI rise ≥0.15 with mine class / mapped quarry overlap ≥0.30 | `MINING`; footprint evidence does not prove extraction or permission |
-| 4 | NBR drop ≥0.27, earlier class not crop, and dark later visible/NIR surface or nearby fire report | `BURN_SCAR`; ignition cause remains unknown |
+| 3 | Transition into mine class; or BSI rise ≥0.15 with mine class / mapped quarry overlap ≥0.30 / an operator-registered mining-site type | `MINING`; footprint evidence does not prove extraction or permission |
+| 4 | NBR drop ≥0.27, earlier class not crop, and (dark later visible/NIR surface outside a registered mining site, or a nearby fire report) | `BURN_SCAR`; ignition cause remains unknown |
 | 5 | Vegetation becomes bare/shrub, extreme rainfall or landslide report, available mean slope ≥18° and scar bounding-box fill ≤0.55 | `LANDSLIDE`; missing terrain/context prevents this rule from firing |
 | 6 | Tree becomes bare or shrub/grass | `DEFORESTATION`, subject to the subsequent seasonal test |
 | 7 | Becomes built, or NDBI rise ≥0.15 with vegetation loss under the coded class restrictions | `URBANISATION` if at least 0.25 of the surrounding ring was built; otherwise `CONSTRUCTION` |
-| 8 | Crop↔bare/shrub or crop change matching the coded cycle conditions | `CROP_CYCLE`; crop-to-built is handled earlier |
-| 9 | Exposed soil without supporting cause, same-cover variation, or unmatched transition | `OTHER_CHANGE` and review rather than a specific accusation |
+| 8 | Crop→bare/shrub/crop or bare→crop | `CROP_CYCLE`; crop-to-built is handled earlier |
+| 9 | Exposed soil without supporting cause, vegetation gain with falling BSI, same-cover variation, or unmatched transition | `OTHER_CHANGE` and review rather than a specific accusation |
 
 The burn darkness limits are visible reflectance ≤0.13 and NIR ≤0.26. Rainfall defaults are 100 mm (heavy) and 200 mm (extreme) over a 14-day window, including the wettest such window in the comparison interval when available. They are heuristic settings, not universal scientific/legal definitions. Every finding retains its index changes and readable reasons.
 
@@ -157,7 +157,9 @@ The burn darkness limits are visible reflectance ≤0.13 and NIR ≤0.26. Rainfa
 
 Let `R` be a region, `Vref` the valid reference pixels, and `I` an index. The test first requires `|R ∩ Vref|/|R| ≥ 0.5`; otherwise `seasonal_persists = null`. It considers index drivers whose regional before-to-after mean change magnitude is at least `0.6 × index_threshold`.
 
-For a driver, subtract the AOI-wide median from the later-minus-reference difference on shared usable pixels. A reference-covered region pixel supports persistence when that residual has the original change direction and magnitude at least `max(0.5 × |regional_change|, 0.5 × index_threshold)`. Take the largest supporting fraction across drivers. Persistence is true when that fraction is at least 0.5. If no driver qualifies, compare the maximum normalised absolute index distance against 0.5 instead.
+For a driver, estimate the later-minus-reference common shift from stable shared pixels **outside all detected change**, using the same small-shift criterion. A reference-covered region pixel supports persistence when its residual has the original change direction and magnitude at least `max(0.5 × |regional_change|, 0.5 × index_threshold)`. Take the largest supporting fraction across drivers. Persistence is true when that fraction is at least 0.5.
+
+Benign seasonality requires positive similarity, not merely a failure of persistence: at least 0.60 of the covered region must be within `0.60 × index_threshold` of the reference on **every driving index**. If no driver qualifies, use the maximum absolute normalised distance over all indices: distance ≥1.0 supports persistence; distance ≤0.60 supports similarity. Persistence takes precedence. A region meeting neither criterion is **inconclusive**, with `seasonal_persists = null`, even when reference coverage is sufficient.
 
 If persistence is false, the verdict becomes `SEASONAL_BENIGN`. The category becomes `CROP_CYCLE` when crop is involved or `SEASONAL_VEGETATION` for other non-water recurrence. Recurring water remains `WATER_CHANGE`. If a crop-cycle rule already matched, it is benign even if the reference is missing or persistence is true. Therefore this is a screening heuristic; an unusual harmful crop event could be suppressed. Missing reference does not prove either seasonality or permanence. Year-to-year hydrology and agricultural timing remain confounders.
 
@@ -178,7 +180,7 @@ With no matching record, the strongest verdict is `SUSPECTED_UNAUTHORISED`: **ph
 
 ### 6.7 Evidence scores, alerts and routing
 
-Finding confidence is a weighted evidence-ranking heuristic: fused change support, rule strength and seasonal support. It is not calibrated class accuracy or a probability of wrongdoing. Priority additionally considers verdict and changed area. Severity follows verdict and area thresholds. None of these values constitutes a legal risk score.
+Finding confidence is a weighted evidence-ranking heuristic: fused change support, rule strength and seasonal support. Weak cause patterns such as vegetation gain or same-cover variation have a confidence cap of 0.55, below the default alert threshold of 0.62; these are rule constants, not accuracy measurements. It is not calibrated class accuracy or a probability of wrongdoing. Priority additionally considers verdict and changed area. Severity follows verdict and area thresholds. None of these values constitutes a legal risk score.
 
 `SEASONAL_BENIGN` findings are stored without alerts. Other findings must pass the configured confidence threshold. Site-selected categories restrict non-hazard categories; hazard categories bypass that category filter but still face the evidence threshold. Repeated same-category regions overlapping at least 0.20 of the smaller region merge into an active alert. Live and replay evidence do not merge; replay merging is restricted to the same replay ID. Merging updates persistence rather than automatically creating another dispatch.
 
@@ -294,14 +296,15 @@ Screenshots belong under `docs/screenshots/` with acquisition dates, origin, met
 ## 11. Limitations, security and ethics
 
 - The system proposes causes from patterns and optional context. Optical imagery cannot prove the mechanism, actor, intent or legality of change. A burn-scar `NATURAL_EVENT` label does not prove natural ignition.
-- Clouds, haze, monsoon gaps, shadows, mixed pixels and registration errors affect results. The spectral gate's median centring can miss AOI-wide changes. Morphology and minimum area can discard small events.
+- Clouds, haze, monsoon gaps, shadows, mixed pixels and registration errors affect results. The stable-pixel shift estimate, strong-spectral override and haze filter are heuristics requiring independent validation. Morphology and minimum area can discard small events.
 - Seasonality is based on one available reference near last year's date and heuristic thresholds. Recurring water or shifted sowing dates can mislead it; crop-cycle suppression can hide unusual harm.
 - OSCD L1C urban imagery differs from live L2A India data. Normalisation reduces but cannot validate away the shift. India forest/land-cover supervision is weak and dated; geographic splits do not guarantee national generalisation.
 - An incomplete permit register creates absence-of-record findings. Illustrative approximate zones can influence the code's verdict and must remain visibly qualified. A match is not official legal confirmation.
-- A scheduled check does not guarantee a new usable observation. Newest-first selection and finite budgets limit observation coverage. Provider failover does not eliminate all outages; a new replay request needs catalogue access.
+- A scheduled check does not guarantee a new usable observation. Initial newest-scene selection, finite read budgets and bounded chronological catch-up limit observation coverage. Provider failover does not eliminate all outages; a new replay request needs catalogue access.
 - SQLite and in-process queues/events suit a small deployment. Multiple Uvicorn processes require external coordination. Crash recovery is not a substitute for backups, capacity testing or a durable distributed queue.
 - Optional password login protects mutating API routes; reads, evidence and model artifacts remain public. It is not departmental identity, roles or tamper-proof audit. TLS, access review, secret management and abuse controls are deployment work.
 - `.example` addresses represent seeded routing only. SMTP acceptance is not verified receipt. Avoid naming a person/company as acting illegally; retain review/false-positive outcomes and minimise dissemination of sensitive locations.
+- Fresh-install dependency gap: the inspected operational requirements omit SciPy even though analysis imports `scipy.ndimage`. The README manual setup includes SciPy explicitly; launch scripts and container requirements need backend/integrator reconciliation. No install or clean-environment launch was tested here.
 - Docker/container execution, final package portability, field validation and external delivery remain unverified by this worker.
 
 ## 12. Future scope
