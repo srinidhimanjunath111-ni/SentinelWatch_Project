@@ -4,7 +4,7 @@ import { h, debounce, morph, reconcile } from "../dom.js";
 import { api, asList } from "../api.js";
 import { icon } from "../icons.js";
 import {
-  categoryLabel, channelLabel, dispatchStatusLabel, formatArea, formatDateTime, verdictLabel,
+  categoryLabel, channelLabel, dispatchLine, formatArea, formatDateTime, verdictLabel,
 } from "../format.js";
 import { alertPlace, alertTime, isOpenAlert, on } from "../state.js";
 import { emptyState, errorState, imageBox, relTime, replayBadge, severityTag, skeletonRows, statusTag } from "../ui.js";
@@ -66,12 +66,6 @@ export async function mountDepartments(root, params) {
           h("span.inbox-meta",
             [verdictLabel(alert.verdict), formatArea(alert.area_m2)].filter(Boolean).join(" · ")),
           latest ? h("span.inbox-dispatch", icon("mail", { size: 12 }), dispatchLine(latest)) : null)));
-  }
-
-  function dispatchLine(row) {
-    const parts = [dispatchStatusLabel(row.status)];
-    if (row.detail) parts.push(`(${row.detail})`);
-    return parts.join(" ");
   }
 
   let inboxSeq = 0;

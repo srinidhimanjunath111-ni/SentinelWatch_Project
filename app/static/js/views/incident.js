@@ -4,7 +4,7 @@ import { h, debounce, morph, setChildren } from "../dom.js";
 import { api, asList } from "../api.js";
 import { icon } from "../icons.js";
 import {
-  categoryLabel, channelLabel, dispatchStatusLabel, errorText, formatArea, formatDate, formatDateTime, formatLatency, formatPercent, formatSigned,
+  categoryLabel, channelLabel, dispatchLine, errorText, formatArea, formatDate, formatDateTime, formatLatency, formatPercent, formatSigned,
   isNum, landcoverLabel, statusLabel, verdictHeadline, zoneTypeLabel,
 } from "../format.js";
 import { on, severityRank, store } from "../state.js";
@@ -307,7 +307,7 @@ export async function mountIncident(root, params) {
           h("tbody", rows.map((row) => h("tr",
             h("td", deptName(row, alert), row.destination ? h("span.cell-sub.mono", row.destination) : null),
             h("td", channelLabel(row.channel)),
-            h("td", dispatchStatusLabel(row.status), row.detail ? h("span.cell-sub", row.detail) : null),
+            h("td", dispatchLine(row)),
             h("td", formatDateTime(row.at || row.created_at)),
             h("td.num", formatLatency(row.latency_seconds ?? (alert && alert.latency_seconds))))))))
         : h("p.panel-empty", alert ? "Nothing has been dispatched for this alert." : "No alert was raised, so nothing was dispatched."));

@@ -138,6 +138,17 @@ const DISPATCH_STATUS_LABELS = {
   SKIPPED: "Skipped",
 };
 
+/** "Saved to outbox (SMTP not configured)": the state, with the backend's reason when it adds one. */
+export function dispatchLine(row) {
+  if (!row) return "";
+  const label = dispatchStatusLabel(row.status);
+  const detail = row.detail ? String(row.detail).trim() : "";
+  if (!detail) return label;
+  if (detail.toLowerCase().startsWith(label.toLowerCase())) return detail;
+  if (detail.length > 120) return label;
+  return label ? `${label} (${detail})` : detail;
+}
+
 const CHANNEL_LABELS = { email: "Email", webhook: "Webhook", sms: "SMS", outbox: "Outbox", in_app: "Console" };
 
 const SENSITIVITY_LABELS = { LOW: "Low", MEDIUM: "Medium", HIGH: "High" };

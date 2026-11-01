@@ -141,7 +141,7 @@ time.rel { white-space: nowrap; }
 .view-page { overflow-y: auto; scrollbar-gutter: stable; }
 
 .page { max-width: 88rem; margin: 0 auto; padding: 1rem 1.25rem 3rem; display: flex; flex-direction: column; gap: 1rem; }
-.page-wide { max-width: 118rem; }
+.page-wide { max-width: none; }
 .page-head { display: flex; align-items: flex-start; gap: 1rem; flex-wrap: wrap; }
 .page-head-main { min-width: 0; flex: 1 1 20rem; }
 .page-title { font-size: 1.385rem; font-weight: 600; letter-spacing: -0.008em; line-height: 1.25; }
@@ -194,7 +194,7 @@ textarea.input { height: auto; padding: 0.5rem; resize: vertical; line-height: 1
 .input::placeholder { color: var(--text-3); }
 
 .form { display: flex; flex-direction: column; gap: 0.75rem; }
-.field { display: flex; flex-direction: column; gap: 0.25rem; min-width: 0; flex: 1 1 0; border: 0; margin: 0; padding: 0; }
+.field { display: flex; flex-direction: column; gap: 0.25rem; min-width: 0; flex: 0 0 auto; border: 0; margin: 0; padding: 0; }
 .field-narrow { flex: 0 0 6rem; }
 .field-label { font-size: 0.923rem; color: var(--text-2); font-weight: 500; padding: 0; }
 .form-row { display: flex; gap: 0.75rem; flex-wrap: wrap; }
@@ -469,7 +469,7 @@ a.log-text:hover { color: var(--text); }
 .context-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 0.875rem 1.25rem; padding: 0.75rem; }
 .context-rain { grid-column: 1 / -1; }
 .context-list { display: flex; flex-direction: column; gap: 0.3rem; }
-.context-list li { display: flex; flex-direction: column; }
+.context-list li { display: flex; flex-direction: column; align-items: flex-start; }
 .context-title a { display: inline-flex; align-items: center; gap: 0.25rem; }
 .context-detail { color: var(--text-3); font-size: 0.923rem; }
 .context-detail:empty { display: none; }
@@ -490,7 +490,7 @@ a.log-text:hover { color: var(--text); }
 
 .chart { position: relative; }
 .chart-canvas { position: relative; }
-.chart-svg { display: block; width: 100%; height: auto; max-height: 11rem; font-family: var(--font); }
+.chart-svg { display: block; width: 100%; height: auto; font-family: var(--font); }
 .chart-grid { stroke: var(--line); stroke-width: 1; shape-rendering: crispEdges; }
 .chart-tick { fill: var(--text-3); font-size: 10px; font-variant-numeric: tabular-nums; }
 .chart-marker { stroke: var(--text-3); stroke-width: 1; }

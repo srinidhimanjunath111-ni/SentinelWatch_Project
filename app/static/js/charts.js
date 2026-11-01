@@ -20,7 +20,7 @@ function niceMax(value) {
  * @param markers [{date, label}] scene dates drawn as thin neutral rules
  */
 export function rainfallChart(rows, { markers = [], unit = "mm", title = "Daily rainfall" } = {}) {
-  const width = 560;
+  const width = 760;
   const height = 150;
   const margin = { top: 16, right: 8, bottom: 22, left: 30 };
   const plotW = width - margin.left - margin.right;

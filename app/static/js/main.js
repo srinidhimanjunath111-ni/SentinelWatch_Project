@@ -268,7 +268,7 @@ on("fresh-alerts", (batch) => {
 
 on("areas", reconcileRunsFromAreas);
 
-connectEvents({
+const events = connectEvents({
   onState: setConnection,
   onEvent(name, data) {
     switch (name) {
@@ -296,12 +296,16 @@ connectEvents({
   },
 });
 
-refreshAll();
-setInterval(refreshAll, POLL_MS);
+async function poll() {
+  if (!(await refreshAll())) events.kick();
+}
+
+poll();
+setInterval(poll, POLL_MS);
 setInterval(() => refreshRelativeTimes(), TICK_MS);
 document.addEventListener("visibilitychange", () => {
   if (!document.hidden) {
-    refreshAll();
+    poll();
     refreshRelativeTimes();
   }
 });

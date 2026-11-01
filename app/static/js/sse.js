@@ -23,7 +23,10 @@ export function connectEvents({ onEvent, onState, url = "/api/events/stream" }) 
     const delay = Math.min(15000, 1000 * 2 ** Math.min(attempts, 4));
     attempts += 1;
     clearTimeout(retryTimer);
-    retryTimer = setTimeout(open, delay);
+    retryTimer = setTimeout(() => {
+      retryTimer = null;
+      open();
+    }, delay);
   }
 
   function closeSource() {
@@ -82,6 +85,10 @@ export function connectEvents({ onEvent, onState, url = "/api/events/stream" }) 
   open();
 
   return {
+    /** Called when polling shows the server is gone though the socket still looks open. */
+    kick() {
+      if (!stopped && !retryTimer) scheduleRetry();
+    },
     close() {
       stopped = true;
       clearTimeout(retryTimer);

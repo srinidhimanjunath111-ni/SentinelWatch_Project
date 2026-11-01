@@ -62,8 +62,11 @@ export function createMap(container, options = {}) {
     errors += 1;
     if (errors > 6 && loads === 0) container.classList.add("map-offline");
   });
-  imagery.on("tileload", () => {
+  imagery.on("tileload", (event) => {
+    // A failed tile "loads" the blank placeholder, which says nothing about the network.
+    if (event.tile && event.tile.src === BLANK_TILE) return;
     loads += 1;
+    errors = 0;
     container.classList.remove("map-offline");
   });
   return map;

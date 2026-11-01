@@ -337,8 +337,9 @@ export function setConnection(state) {
 
 let polling = false;
 
+/** Resolves false only when no request reached the server at all. */
 export async function refreshAll() {
-  if (polling) return;
+  if (polling) return true;
   polling = true;
   try {
     const [overview, areas, alerts] = await Promise.allSettled([
@@ -367,6 +368,7 @@ export async function refreshAll() {
       store.failed.alerts = alerts.reason;
       emit("alerts");
     }
+    return [overview, areas, alerts].some((result) => result.status === "fulfilled" || result.reason?.status > 0);
   } finally {
     polling = false;
   }
