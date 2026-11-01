@@ -33,7 +33,7 @@
     "reference": "Jewar EC, 9 March 2020: https://media.niairport.in/-/jssmedia/dxn/portal/documents/environment-clearance-compliance/environment-clearance-approval.pdf",
     "valid_from": "2020-03-09",
     "valid_to": null,
-    "source": "Approximate developed platform traced from inspected Sentinel-2, 24 March 2025; not an official EC boundary. EC expiry not established; null is unknown.",
+    "source": "Approximate developed platform traced from inspected Sentinel-2, 24 March 2025; not an official EC boundary. Expiry not established in the documents reviewed.",
     "is_illustrative": true
   },
   {
@@ -164,7 +164,7 @@
     "reference": "Supreme Court order, 16 October 2023, CA4395/2014: https://indiankanoon.org/doc/46195082/",
     "valid_from": "2022-03-25",
     "valid_to": null,
-    "source": "Approximate active-pit footprint traced from Sentinel-2, 25 March 2025, not an official lease. Clearance contested; NGT OA59/2024 disposed 28 May 2025, parallel court proceedings noted. Current status/expiry unverified.",
+    "source": "Approximate active-pit footprint traced from Sentinel-2, 25 March 2025, not an official lease. Clearance contested; NGT OA59/2024 disposed 28 May 2025, parallel court proceedings noted. Current status and expiry not established in the documents reviewed.",
     "is_illustrative": true
   }
 ]

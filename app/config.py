@@ -86,7 +86,7 @@ class Settings:
 
     # External context (rainfall, disaster feeds, OpenStreetMap). Failures never fail a run.
     context_timeout_seconds = float(os.getenv("CONTEXT_TIMEOUT_SECONDS", "12"))
-    context_budget_seconds = float(os.getenv("CONTEXT_BUDGET_SECONDS", "15"))
+    context_budget_seconds = float(os.getenv("CONTEXT_BUDGET_SECONDS", "8"))
     context_user_agent = os.getenv(
         "CONTEXT_USER_AGENT", "SentinelWatch/3.0 (final-year engineering project; contact via repository)"
     )

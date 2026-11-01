@@ -128,7 +128,6 @@ def queue_monitoring_run(
     origin: str = ORIGIN_LIVE,
     as_of: str | None = None,
     replay_id: str | None = None,
-    force: bool = False,
 ) -> MonitoringRun:
     run = MonitoringRun(
         aoi_id=area.id,
@@ -140,7 +139,6 @@ def queue_monitoring_run(
         trigger=trigger,
         as_of_date=as_of,
         replay_id=replay_id,
-        replay_force=force,
     )
     db.add(run)
     db.flush()
@@ -307,7 +305,11 @@ def _known_scenes(
 
 
 def _analysed_dates(db: Session, area: MonitoringArea, run: MonitoringRun) -> set[str]:
-    """Scene dates already analysed under this run's origin, so results never mix."""
+    """Scene dates this run must not repeat.
+
+    Live monitoring has one cutoff, shared by every live run. Each replay has its own, so
+    a replay can always be repeated and never reads or moves the live cutoff.
+    """
 
     query = (
         db.query(SatelliteAcquisition.acquisition_datetime)
@@ -319,8 +321,7 @@ def _analysed_dates(db: Session, area: MonitoringArea, run: MonitoringRun) -> se
             MonitoringRun.origin == run.origin,
         )
     )
-    if run.origin == ORIGIN_REPLAY and run.replay_force:
-        # A forced replay repeats the walk, skipping only what this same replay has done.
+    if run.origin == ORIGIN_REPLAY:
         query = query.filter(MonitoringRun.replay_id == run.replay_id)
     return {row[0].strftime("%Y-%m-%d") for row in query.all()}
 
@@ -981,7 +982,8 @@ def _run_pipeline(db: Session, run: MonitoringRun, area: MonitoringArea) -> bool
         analysis = _analysis_record(
             db, run, area, after_link, before_link, method, grid, quality, {"regions": 0}
         )
-        after_link.scene_status = "ANALYSED"
+        if after_link.scene_status != "CHANGE":
+            after_link.scene_status = "ANALYSED"
         after_link.thumbnail = _thumbnail_for(area, after.scene, after_bands, valid, grid)
         record_audit(db, "analysis", analysis.id, "analysis_completed", {"method": method, "regions": 0})
         _finish_without_case(
@@ -1002,7 +1004,7 @@ def _run_pipeline(db: Session, run: MonitoringRun, area: MonitoringArea) -> bool
         progress=62,
         message=f"{len(change_map.component_ids)} change region(s) found. Gathering rainfall, disaster and map context.",
     )
-    raw_context = fetch_case_context(
+    raw_context, late_context = fetch_case_context(
         area.center_lat,
         area.center_lon,
         load_json(area.bbox_json, []),
@@ -1206,8 +1208,10 @@ def _run_pipeline(db: Session, run: MonitoringRun, area: MonitoringArea) -> bool
         case.findings.append(finding)
         db.flush()
         regions_by_finding[finding.id] = region
-    after_link.scene_status = "CHANGE"
-    after_link.case_id = case.id
+    # A replay of a scene live monitoring already reported leaves the live result in place.
+    if run.origin == ORIGIN_LIVE or after_link.case_id is None or _is_replay_case(db, after_link.case_id):
+        after_link.scene_status = "CHANGE"
+        after_link.case_id = case.id
     created, updated = create_or_merge_alerts(
         db,
         case,
@@ -1235,6 +1239,9 @@ def _run_pipeline(db: Session, run: MonitoringRun, area: MonitoringArea) -> bool
     db.commit()
     del after_bands, before_bands, reference_bands, change_map, region_masks, regions_by_finding
     del assessed, evidence_labels
+
+    # A slow source must not delay the alert below; it fills in the stored case when it answers.
+    late_context.finish_later(case.id)
 
     # Only now are the rows visible to other sessions, so only now may clients hear about them.
     for alert in created:
@@ -1268,6 +1275,10 @@ def _run_pipeline(db: Session, run: MonitoringRun, area: MonitoringArea) -> bool
         ),
     )
     return selection.more_pending
+
+
+def _is_replay_case(db: Session, case_id: str) -> bool:
+    return db.query(Case.origin).filter(Case.id == case_id).scalar() == ORIGIN_REPLAY
 
 
 def _analysis_record(

@@ -24,8 +24,12 @@ from app.models import (
     MonitoringRun,
     NotificationAttempt,
 )
+from app.satellite.grid import build_grid
+from app.services.alerting import alert_query, create_or_merge_alerts
 from app.services.events import bus
 from app.services.monitoring import execute_monitoring_run
+from app.services.payloads import alert_payload
+from app.timeutil import utcnow
 from tests.fakes import (
     BARE,
     BBOX,
@@ -33,6 +37,7 @@ from tests.fakes import (
     FOG,
     FOREST,
     LEAFLESS,
+    NO_LATE_CONTEXT,
     WATER,
     FixedLandCover,
     Scene,
@@ -46,7 +51,7 @@ from tests.fakes import (
 
 @pytest.fixture(autouse=True)
 def scripted_context(monkeypatch):
-    monkeypatch.setattr("app.services.monitoring.fetch_case_context", lambda *a, **k: quiet_context())
+    monkeypatch.setattr("app.services.monitoring.fetch_case_context", lambda *a, **k: (quiet_context(), NO_LATE_CONTEXT))
     monkeypatch.setattr("app.services.monitoring.read_slope_degrees", lambda grid: None)
 
 
@@ -156,7 +161,7 @@ def test_missing_reference_is_recorded_as_null():
 
 def test_flood_with_rain_goes_to_the_disaster_authority(monkeypatch):
     rainy = quiet_context(rainfall={"available": True, "total_mm": 220.0})
-    monkeypatch.setattr("app.services.monitoring.fetch_case_context", lambda *a, **k: rainy)
+    monkeypatch.setattr("app.services.monitoring.fetch_case_context", lambda *a, **k: (rainy, NO_LATE_CONTEXT))
     install({AFTER: Scene(FOREST, WATER), BEFORE: Scene(FOREST), REFERENCE: Scene(FOREST)})
     _run(make_area())
     alert = _rows(Alert)[0]
@@ -463,7 +468,7 @@ def test_replay_reuses_cache_and_is_deterministic():
     _replay_run(area_id, AFTER, replay_id="first")
     first = sorted((f.category, f.area_pixels, f.verdict) for f in _rows(Finding))
     reads = provider.band_reads + provider.scl_reads
-    _replay_run(area_id, AFTER, replay_id="second", force=True)
+    _replay_run(area_id, AFTER, replay_id="second")
     all_findings = sorted((f.category, f.area_pixels, f.verdict) for f in _rows(Finding))
     assert all_findings == sorted(first * 2)
     assert provider.band_reads + provider.scl_reads == reads
@@ -475,7 +480,7 @@ def test_scene_is_read_from_cache_when_every_provider_is_down():
     _replay_run(area_id, AFTER, replay_id="first")
     provider.fail_reads = True
     provider.fail_search = True
-    run = _replay_run(area_id, AFTER, replay_id="second", force=True)
+    run = _replay_run(area_id, AFTER, replay_id="second")
     assert run.status == "COMPLETED", run.error_detail
 
 
@@ -636,3 +641,214 @@ def test_area_model_is_left_consistent_after_a_run():
     area = _rows(MonitoringArea, MonitoringArea.id == area_id)[0]
     assert area.last_checked_at is not None
     assert area.next_check_at > area.last_checked_at
+
+
+# Alert grouping ----------------------------------------------------------------------------
+
+
+def _pits(*corners, size=25):
+    """A scene with several separate bare patches on one forest, as a mine's benches would be."""
+
+    class Pits(Scene):
+        def bands(self, shape):
+            array = super().bands(shape)
+            spectrum = np.array(BARE, dtype=np.float32)[:, None, None]
+            for row, column in corners:
+                array[:, row : row + size, column : column + size] = spectrum
+            return array
+
+    return Pits(FOREST)
+
+
+def test_similar_regions_group_into_one_alert_with_regions_listed():
+    install(
+        {
+            AFTER: _pits((5, 5), (5, 50), (50, 5), (50, 50)),
+            BEFORE: Scene(FOREST),
+            REFERENCE: Scene(FOREST),
+        }
+    )
+    _run(make_area())
+    findings = _rows(Finding)
+    assert len(findings) == 4, "Findings stay separate underneath"
+    alerts = _rows(Alert)
+    assert len(alerts) == 1
+    alert = alerts[0]
+    assert alert.area_m2 == sum(f.area_m2 for f in findings)
+    assert "4 regions" in alert.message
+    assert {f.alert_id for f in findings} == {alert.id}
+    assert alert.finding_id == max(findings, key=lambda f: f.area_m2).id
+    assert len(_rows(NotificationAttempt, NotificationAttempt.channel == "EMAIL")) == 1
+    db = SessionLocal()
+    try:
+        payload = alert_payload(alert_query(db).one())
+    finally:
+        db.close()
+    assert payload["region_count"] == 4
+    assert {region["finding_id"] for region in payload["regions"]} == {f.id for f in findings}
+    assert payload["area_m2"] == alert.area_m2
+
+
+def test_group_severity_follows_the_total_area():
+    # Each pit alone is below the critical area; together they pass it.
+    install(
+        {
+            AFTER: _pits((5, 5), (5, 40), (40, 5), (40, 40), size=15),
+            BEFORE: Scene(FOREST),
+            REFERENCE: Scene(FOREST),
+        }
+    )
+    _run(make_area())
+    alert = _rows(Alert)[0]
+    assert all(f.severity == "high" for f in _rows(Finding))
+    assert alert.severity == "critical"
+
+
+def _make_finding(db, case, category, verdict, area_m2, confidence=0.8) -> Finding:
+    finding = Finding(
+        case_id=case.id,
+        activity=category.lower(),
+        category=category,
+        verdict=verdict,
+        confidence=confidence,
+        severity="medium",
+        area_pixels=int(area_m2 / 100),
+        area_m2=area_m2,
+        centroid_x=1.0,
+        centroid_y=1.0,
+        bbox="1,1,2,2",
+        evidence_json="{}",
+        verdict_reasons_json="[]",
+    )
+    case.findings.append(finding)
+    db.add(finding)
+    db.flush()
+    return finding
+
+
+def _group(findings_spec):
+    grid = build_grid(json.loads(json.dumps({
+        "type": "Polygon",
+        "coordinates": [[[BBOX[0], BBOX[1]], [BBOX[2], BBOX[1]], [BBOX[2], BBOX[3]], [BBOX[0], BBOX[3]], [BBOX[0], BBOX[1]]]],
+    })))
+    area_id = make_area()
+    db = SessionLocal()
+    try:
+        area = db.get(MonitoringArea, area_id)
+        case = Case(title="t", before_image="/b", after_image="/a", mask_image="/m", aoi_id=area_id, origin="live", after_date="2026-01-01")
+        db.add(case)
+        db.flush()
+        for category, verdict, area_m2 in findings_spec:
+            _make_finding(db, case, category, verdict, area_m2)
+        created, updated = create_or_merge_alerts(
+            db, case, area, {}, grid, confidence_threshold=0.62, processed_at=utcnow()
+        )
+        db.commit()
+        summary = [(a.category, a.verdict, a.severity, a.area_m2) for a in created]
+        reasons = [json.loads(f.verdict_reasons_json) for f in case.findings]
+        linked = [f.alert_id for f in case.findings]
+        return summary, reasons, linked
+    finally:
+        db.close()
+
+
+def test_one_alert_per_category_and_verdict_ranked_by_severity():
+    summary, _, _ = _group(
+        [
+            ("OTHER_CHANGE", "NEEDS_REVIEW", 20_000.0),
+            ("MINING", "SUSPECTED_UNAUTHORISED", 30_000.0),
+            ("MINING", "SUSPECTED_UNAUTHORISED", 40_000.0),
+            ("MINING", "AUTHORISED_ACTIVITY", 40_000.0),
+        ]
+    )
+    assert summary == [
+        ("MINING", "SUSPECTED_UNAUTHORISED", "critical", 70_000.0),
+        ("OTHER_CHANGE", "NEEDS_REVIEW", "medium", 20_000.0),
+        ("MINING", "AUTHORISED_ACTIVITY", "low", 40_000.0),
+    ]
+
+
+def test_tiny_other_change_stays_as_evidence_beside_larger_change():
+    summary, reasons, linked = _group(
+        [("MINING", "SUSPECTED_UNAUTHORISED", 30_000.0), ("OTHER_CHANGE", "NEEDS_REVIEW", 6_000.0)]
+    )
+    assert [item[0] for item in summary] == ["MINING"]
+    assert linked[1] is None
+    assert any("Under 1 ha" in reason for reason in reasons[1])
+
+
+def test_tiny_other_change_alerts_when_it_is_the_only_thing():
+    summary, _, _ = _group([("OTHER_CHANGE", "NEEDS_REVIEW", 6_000.0), ("OTHER_CHANGE", "NEEDS_REVIEW", 7_000.0)])
+    assert summary == [("OTHER_CHANGE", "NEEDS_REVIEW", "medium", 13_000.0)]
+
+
+def test_grouped_alert_still_dedupes_across_consecutive_scenes():
+    pits = _pits((5, 5), (5, 50), (50, 5))
+    _two_detections(pits, pits)
+    alerts = _rows(Alert)
+    assert len(alerts) == 1 and alerts[0].persistence_count == 2
+
+
+# Replay independence -----------------------------------------------------------------------
+
+
+def test_replay_over_old_dates_runs_after_live_has_moved_on_and_leaves_live_state_alone():
+    scenes = {
+        days_ago(200): Scene(FOREST),
+        days_ago(170): Scene(FOREST, BARE),
+        days_ago(170 + 365): Scene(FOREST),
+        days_ago(10): Scene(FOREST, BARE),
+        days_ago(40): Scene(FOREST, BARE),
+        days_ago(10 + 365): Scene(FOREST, BARE),
+    }
+    install(scenes)
+    area_id = make_area()
+    assert _run(area_id).status == "COMPLETED_NO_SIGNIFICANT_CHANGE"
+    before = _rows(MonitoringArea, MonitoringArea.id == area_id)[0]
+    # An old as_of, far behind the live cutoff, still analyses.
+    first = _replay_run(area_id, days_ago(170), replay_id="one")
+    assert first.status == "COMPLETED", first.message
+    after = _rows(MonitoringArea, MonitoringArea.id == area_id)[0]
+    assert after.last_checked_at == before.last_checked_at
+    assert after.next_check_at == before.next_check_at
+    # Live still knows its own cutoff: there is nothing new to analyse.
+    assert _run(area_id).status == "NO_NEW_ACQUISITION"
+
+
+def test_repeating_a_replay_gives_new_results_and_new_alerts_from_the_cache():
+    provider = install({AFTER: Scene(FOREST, BARE), BEFORE: Scene(FOREST), REFERENCE: Scene(FOREST)})
+    area_id = make_area()
+    assert _replay_run(area_id, AFTER, replay_id="one").status == "COMPLETED"
+    reads = provider.band_reads + provider.scl_reads
+    assert _replay_run(area_id, AFTER, replay_id="two").status == "COMPLETED"
+    assert provider.band_reads + provider.scl_reads == reads
+    assert len(_rows(Case)) == 2
+    assert len(_rows(Alert)) == 2, "Dedupe applies only within one replay"
+    # Within one replay it still applies.
+    assert _replay_run(area_id, AFTER, replay_id="two").status == "NO_NEW_ACQUISITION"
+
+
+def test_replay_does_not_replace_a_live_result_on_the_timeline():
+    install({AFTER: Scene(FOREST, BARE), BEFORE: Scene(FOREST), REFERENCE: Scene(FOREST)})
+    area_id = make_area()
+    _run(area_id)
+    live_case = _rows(Case)[0]
+    _replay_run(area_id, AFTER, replay_id="one")
+    link = next(row for row in _rows(AOIAcquisition) if row.case_id)
+    assert link.case_id == live_case.id
+
+
+# Contradictory reasons ---------------------------------------------------------------------
+
+
+def test_crop_cycle_reasons_never_say_it_is_not_seasonal(monkeypatch):
+    classes = FixedLandCover([2, 4])
+    monkeypatch.setattr("app.services.monitoring.get_landcover_classifier", lambda: classes)
+    # Unlike last year, so seasonality persists, but crop-to-bare still reads as a crop cycle.
+    install({AFTER: Scene(FOREST, BARE), BEFORE: Scene(FOREST, CROP), REFERENCE: Scene(FOREST, CROP)})
+    _run(make_area())
+    finding = _rows(Finding)[0]
+    assert finding.verdict == "SEASONAL_BENIGN"
+    assert finding.seasonal_persists is True
+    assert "not seasonal" not in finding.verdict_reasons_json
+    assert "sowing dates" in finding.verdict_reasons_json

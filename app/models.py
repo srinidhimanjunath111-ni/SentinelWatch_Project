@@ -292,6 +292,8 @@ class Finding(Base):
     centroid_lat: Mapped[float | None] = mapped_column(Float, nullable=True)
     centroid_lon: Mapped[float | None] = mapped_column(Float, nullable=True)
     thumbnail: Mapped[str | None] = mapped_column(String(512), nullable=True)
+    # The alert this region is reported under. Several regions can share one alert.
+    alert_id: Mapped[str | None] = mapped_column(String(36), nullable=True, index=True)
 
     case: Mapped[Case] = relationship(back_populates="findings")
 
@@ -331,6 +333,11 @@ class Alert(Base):
 
     case: Mapped[Case] = relationship(back_populates="alerts")
     finding: Mapped[Finding | None] = relationship()
+    regions: Mapped[list[Finding]] = relationship(
+        primaryjoin="foreign(Finding.alert_id) == Alert.id",
+        viewonly=True,
+        order_by="Finding.area_m2.desc()",
+    )
     department: Mapped[Department | None] = relationship(back_populates="alerts")
     notifications: Mapped[list[NotificationAttempt]] = relationship(
         back_populates="alert", cascade="all, delete-orphan", order_by="NotificationAttempt.created_at.desc()"

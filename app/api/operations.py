@@ -6,7 +6,7 @@ import json
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from fastapi.responses import Response
-from sqlalchemy import func
+from sqlalchemy import case, func
 from sqlalchemy.orm import Session, defer, joinedload, selectinload
 
 from app.config import settings
@@ -39,7 +39,7 @@ from app.schemas import (
     ReviewCreate,
     StatusUpdate,
 )
-from app.services.alerting import alert_query
+from app.services.alerting import SEVERITY_RANK, alert_query
 from app.services.audit import record_audit
 from app.services.dispatch import case_report_pdf, dispatch_alert
 from app.services.events import publish
@@ -93,7 +93,13 @@ def list_alerts(
 ):
     """``status`` also accepts a comma-separated list, or ``active`` for all unresolved."""
 
-    query = alert_query(db).order_by(Alert.created_at.desc())
+    # Newest first; alerts raised together by one scene rank by severity.
+    severity_rank = case(
+        {name: rank for name, rank in SEVERITY_RANK.items()}, value=Alert.severity, else_=0
+    )
+    query = alert_query(db).order_by(
+        Alert.created_at.desc(), severity_rank.desc(), Alert.priority_score.desc()
+    )
     if status_filter == "active":
         query = query.filter(Alert.status.in_(ACTIVE_ALERT_STATUSES))
     elif status_filter:
@@ -215,7 +221,10 @@ def _case_detail_query(db: Session):
     return db.query(Case).options(
         selectinload(Case.findings),
         selectinload(Case.alerts).options(
-            joinedload(Alert.department), joinedload(Alert.finding), joinedload(Alert.case)
+            joinedload(Alert.department),
+            joinedload(Alert.finding),
+            joinedload(Alert.case),
+            selectinload(Alert.regions),
         ),
         selectinload(Case.reviews),
         joinedload(Case.area),

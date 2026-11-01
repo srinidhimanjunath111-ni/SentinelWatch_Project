@@ -15,7 +15,7 @@ from datetime import datetime
 from typing import Any
 
 import numpy as np
-from sqlalchemy.orm import Session, joinedload
+from sqlalchemy.orm import Session, joinedload, selectinload
 
 from app.models import Alert, Case, Department, Finding, MonitoringArea
 from app.satellite.grid import AOIGrid, rasterize_geometry
@@ -39,6 +39,9 @@ logger = logging.getLogger(__name__)
 
 # Share of the smaller region overlapping before two detections count as the same change.
 DUPLICATE_OVERLAP = 0.2
+# Below this, a change with no specific cause does not alert on its own.
+TINY_OTHER_CHANGE_M2 = 10_000.0
+SEVERITY_RANK = {"low": 1, "medium": 2, "high": 3, "critical": 4}
 _VERDICT_WEIGHT = {
     SUSPECTED_UNAUTHORISED: 1.0,
     NATURAL_EVENT: 0.9,
@@ -83,21 +86,25 @@ def priority_score(verdict: str | None, confidence: float, area_m2: float) -> fl
     return round(100.0 * weight * (0.45 * confidence + 0.35 * size + 0.2), 1)
 
 
-def _describe(finding: Finding, area_name: str, area_m2: float) -> tuple[str, str]:
-    category = (finding.category or "OTHER_CHANGE").replace("_", " ").lower()
-    hectares = area_m2 / 10_000
-    if finding.verdict == SUSPECTED_UNAUTHORISED:
+def _describe(
+    category_name: str | None, verdict: str | None, area_name: str, area_m2: float, regions: int
+) -> tuple[str, str]:
+    category = (category_name or "OTHER_CHANGE").replace("_", " ").lower()
+    size = f"{area_m2 / 10_000:.2f} ha"
+    if regions > 1:
+        size += f" across {regions} regions"
+    if verdict == SUSPECTED_UNAUTHORISED:
         title = f"Suspected unauthorised {category} at {area_name}"
-        lead = f"Physical change consistent with {category} covering {hectares:.2f} ha, with no authorisation on record."
-    elif finding.verdict == NATURAL_EVENT:
+        lead = f"Physical change consistent with {category} covering {size}, with no authorisation on record."
+    elif verdict == NATURAL_EVENT:
         title = f"Possible {category} at {area_name}"
-        lead = f"A {category} pattern covering {hectares:.2f} ha."
-    elif finding.verdict == AUTHORISED_ACTIVITY:
+        lead = f"A {category} pattern covering {size}."
+    elif verdict == AUTHORISED_ACTIVITY:
         title = f"Notice: {category} inside a registered zone at {area_name}"
-        lead = f"Change consistent with {category} covering {hectares:.2f} ha, inside a registered zone."
+        lead = f"Change consistent with {category} covering {size}, inside a registered zone."
     else:
         title = f"Change needing review at {area_name}"
-        lead = f"Material change covering {hectares:.2f} ha with no determined cause."
+        lead = f"Material change covering {size} with no determined cause."
     return (
         title[:180],
         f"{lead} Satellite evidence supports a review and does not establish legality; "
@@ -105,17 +112,76 @@ def _describe(finding: Finding, area_name: str, area_m2: float) -> tuple[str, st
     )
 
 
+def _alert_mask(prior: Alert, grid: AOIGrid) -> np.ndarray | None:
+    """The union of every region an open alert covers, on this AOI's grid."""
+
+    combined: np.ndarray | None = None
+    findings = list(prior.regions) or ([prior.finding] if prior.finding is not None else [])
+    for finding in findings:
+        if not finding.geometry_json:
+            continue
+        try:
+            mask = rasterize_geometry(json.loads(finding.geometry_json), grid)
+        except Exception as error:  # A malformed legacy geometry cannot match anything.
+            logger.info("Skipping overlap test against alert %s: %s", prior.id, error)
+            continue
+        combined = mask if combined is None else combined | mask
+    return combined
+
+
 def _overlaps(prior: Alert, region: np.ndarray, grid: AOIGrid) -> bool:
-    geometry = prior.finding.geometry_json if prior.finding is not None else None
-    if not geometry:
-        return False
-    try:
-        prior_mask = rasterize_geometry(json.loads(geometry), grid)
-    except Exception as error:  # A malformed legacy geometry cannot match anything.
-        logger.info("Skipping overlap test against alert %s: %s", prior.id, error)
+    prior_mask = _alert_mask(prior, grid)
+    if prior_mask is None:
         return False
     smaller = min(int(prior_mask.sum()), int(region.sum()))
     return smaller > 0 and int((prior_mask & region).sum()) / smaller >= DUPLICATE_OVERLAP
+
+
+def _note(finding: Finding, sentence: str) -> None:
+    reasons: list[str] = json.loads(finding.verdict_reasons_json or "[]")
+    reasons.append(sentence)
+    finding.verdict_reasons_json = json.dumps(reasons)
+
+
+def _alertable_findings(
+    case: Case, area: MonitoringArea, confidence_threshold: float
+) -> list[Finding]:
+    """The findings worth an alert. The rest stay as evidence, each saying why."""
+
+    selected = set(json.loads(area.categories_json or "[]"))
+    eligible: list[Finding] = []
+    for finding in case.findings:
+        if finding.verdict == SEASONAL_BENIGN:
+            continue
+        if finding.confidence < confidence_threshold:
+            _note(
+                finding,
+                f"Evidence score {finding.confidence:.2f} is below the alert threshold "
+                f"{confidence_threshold:.2f}, so this is retained without an alert.",
+            )
+            continue
+        # Natural hazards always alert. The AOI's list narrows only human-caused categories.
+        if selected and finding.category not in selected and finding.category not in NATURAL_CAUSED:
+            _note(
+                finding,
+                f"{finding.category} is not among the categories monitored on this AOI, so no alert was raised.",
+            )
+            continue
+        eligible.append(finding)
+
+    def tiny(finding: Finding) -> bool:
+        return finding.category == "OTHER_CHANGE" and finding.area_m2 < TINY_OTHER_CHANGE_M2
+
+    if any(not tiny(finding) for finding in eligible):
+        for finding in eligible:
+            if tiny(finding):
+                _note(
+                    finding,
+                    "Under 1 ha with no specific cause, so it is kept as evidence and the larger "
+                    "changes in this scene carry the alert.",
+                )
+        eligible = [finding for finding in eligible if not tiny(finding)]
+    return eligible
 
 
 def create_or_merge_alerts(
@@ -128,16 +194,17 @@ def create_or_merge_alerts(
     confidence_threshold: float,
     processed_at: datetime,
 ) -> tuple[list[Alert], list[Alert]]:
-    """Create alerts for this case's findings, merging repeats into open alerts.
+    """One alert per category and verdict in this case, merging repeats into open alerts.
 
-    Does not commit. Returns (new alerts, updated alerts). A live detection merges only with
-    live alerts, and a replay only with alerts from the same replay run.
+    Findings stay separate underneath, so a scene with eight similar pits is one alert to
+    read, listing eight regions. Does not commit. Returns (new alerts, updated alerts), most
+    severe first. A live detection merges only with live alerts, and a replay only with
+    alerts from the same replay.
     """
 
-    selected = set(json.loads(area.categories_json or "[]"))
     active = (
         db.query(Alert)
-        .options(joinedload(Alert.finding))
+        .options(joinedload(Alert.finding), selectinload(Alert.regions))
         .filter(
             Alert.aoi_id == area.id,
             Alert.status.in_(ACTIVE_ALERT_STATUSES),
@@ -147,84 +214,80 @@ def create_or_merge_alerts(
     if case.origin == ORIGIN_REPLAY:
         active = active.filter(Alert.replay_id == case.replay_id)
     open_alerts = active.all()
+
+    groups: dict[tuple[str | None, str | None], list[Finding]] = {}
+    for finding in _alertable_findings(case, area, confidence_threshold):
+        groups.setdefault((finding.category, finding.verdict), []).append(finding)
+
     created: list[Alert] = []
     updated: list[Alert] = []
-    for finding in case.findings:
-        if finding.verdict == SEASONAL_BENIGN:
-            continue
-        reasons: list[str] = json.loads(finding.verdict_reasons_json or "[]")
-        if finding.confidence < confidence_threshold:
-            reasons.append(
-                f"Evidence score {finding.confidence:.2f} is below the alert threshold "
-                f"{confidence_threshold:.2f}, so this is retained without an alert."
-            )
-            finding.verdict_reasons_json = json.dumps(reasons)
-            continue
-        # Natural hazards always alert. The AOI's list narrows only human-caused categories.
-        if selected and finding.category not in selected and finding.category not in NATURAL_CAUSED:
-            reasons.append(
-                f"{finding.category} is not among the categories monitored on this AOI, so no alert was raised."
-            )
-            finding.verdict_reasons_json = json.dumps(reasons)
-            continue
-        region = regions.get(finding.id)
-        duplicate = None
-        if region is not None:
-            duplicate = next(
-                (
-                    prior
-                    for prior in open_alerts
-                    # A changed verdict is an escalation and needs its own dispatch, so
-                    # only the same category under the same verdict counts as a repeat.
-                    if prior.category == finding.category
-                    and prior.verdict == finding.verdict
-                    and _overlaps(prior, region, grid)
-                ),
-                None,
-            )
+    for (category, verdict), members in groups.items():
+        members.sort(key=lambda item: item.area_m2, reverse=True)
+        lead = members[0]
+        total_area = sum(item.area_m2 for item in members)
+        confidence = max(item.confidence for item in members)
+        group_mask = np.zeros(grid.shape, dtype=bool)
+        for member in members:
+            mask = regions.get(member.id)
+            if mask is not None:
+                group_mask |= mask
+        # A changed verdict is an escalation and needs its own dispatch, so only the same
+        # category under the same verdict counts as a repeat.
+        duplicate = next(
+            (
+                prior
+                for prior in open_alerts
+                if prior.category == category
+                and prior.verdict == verdict
+                and _overlaps(prior, group_mask, grid)
+            ),
+            None,
+        )
         if duplicate is not None:
             duplicate.persistence_count = (duplicate.persistence_count or 1) + 1
             duplicate.last_seen_at = processed_at
-            duplicate.area_m2 = max(duplicate.area_m2 or 0.0, finding.area_m2)
-            duplicate.confidence = max(duplicate.confidence or 0.0, finding.confidence)
+            duplicate.area_m2 = max(duplicate.area_m2 or 0.0, total_area)
+            duplicate.confidence = max(duplicate.confidence or 0.0, confidence)
             duplicate.severity = severity_for(duplicate.verdict or "", duplicate.area_m2)
             duplicate.priority_score = priority_score(
                 duplicate.verdict, duplicate.confidence, duplicate.area_m2
             )
-            finding.persistence_score = round(min(1.0, duplicate.persistence_count / 3.0), 4)
-            reasons.append(
-                f"This repeats an open alert first raised for {duplicate.acquisition_date}; "
-                f"it has now been seen {duplicate.persistence_count} times, and no new alert was created."
-            )
-            finding.verdict_reasons_json = json.dumps(reasons)
+            for member in members:
+                member.persistence_score = round(min(1.0, duplicate.persistence_count / 3.0), 4)
+                _note(
+                    member,
+                    f"This repeats an open alert first raised for {duplicate.acquisition_date}; "
+                    f"it has now been seen {duplicate.persistence_count} times, and no new alert was created.",
+                )
             record_audit(
                 db,
                 "alert",
                 duplicate.id,
                 "alert_persistence_updated",
-                {"finding_id": finding.id, "count": duplicate.persistence_count, "case_id": case.id},
+                {"count": duplicate.persistence_count, "case_id": case.id, "regions": len(members)},
             )
             updated.append(duplicate)
             continue
-        title, message = _describe(finding, area.name, finding.area_m2)
-        department = department_for(db, finding.category, area.state)
+        title, message = _describe(category, verdict, area.name, total_area, len(members))
+        department = department_for(db, category, area.state)
         alert = Alert(
             case_id=case.id,
-            finding_id=finding.id,
+            finding_id=lead.id,
             title=title,
             message=message,
-            severity=finding.severity,
+            severity=severity_for(verdict or "", total_area),
             status="open",
             department_id=department.id,
-            priority_score=priority_score(finding.verdict, finding.confidence, finding.area_m2),
-            category=finding.category,
-            verdict=finding.verdict,
+            priority_score=priority_score(verdict, confidence, total_area),
+            category=category,
+            verdict=verdict,
             origin=case.origin,
             replay_id=case.replay_id,
             aoi_id=area.id,
-            confidence=finding.confidence,
-            area_m2=finding.area_m2,
+            confidence=confidence,
+            area_m2=total_area,
             acquisition_date=case.after_date,
+            created_at=processed_at,
             detected_at=processed_at,
             scene_processed_at=processed_at,
             last_seen_at=processed_at,
@@ -232,22 +295,36 @@ def create_or_merge_alerts(
         )
         db.add(alert)
         db.flush()
+        for member in members:
+            member.alert_id = alert.id
         record_audit(
             db,
             "alert",
             alert.id,
             "alert_created",
-            {"category": finding.category, "verdict": finding.verdict, "department": department.name},
+            {
+                "category": category,
+                "verdict": verdict,
+                "department": department.name,
+                "regions": len(members),
+            },
         )
         created.append(alert)
+
+    def rank(alert: Alert) -> tuple[int, float]:
+        return (-SEVERITY_RANK.get(alert.severity, 0), -(alert.priority_score or 0.0))
+
+    created.sort(key=rank)
+    updated.sort(key=rank)
     return created, updated
 
 
 def alert_query(db: Session) -> Any:
-    """Alerts with everything the payload reads, loaded in one query."""
+    """Alerts with everything the payload reads, loaded without a query per alert."""
 
     return db.query(Alert).options(
         joinedload(Alert.case).joinedload(Case.area),
         joinedload(Alert.department),
         joinedload(Alert.finding),
+        selectinload(Alert.regions).defer(Finding.evidence_json),
     )

@@ -57,9 +57,10 @@ def area_payload(
     area: MonitoringArea,
     *,
     latest_run: MonitoringRun | None = None,
+    latest_live_run: MonitoringRun | None = None,
     open_alerts: int = 0,
+    replay_alerts: int = 0,
     last_scene: dict | None = None,
-    newest_scene_status: str | None = None,
 ) -> dict:
     return {
         "id": area.id,
@@ -85,26 +86,27 @@ def area_payload(
         "site_key": area.site_key,
         "suggested_replay": load_json(area.suggested_replay_json, None),
         "next_check_at": iso_z(area.next_check_at),
+        # Live monitoring only: a replay of the past cannot put a site into alert.
         "open_alerts": open_alerts,
+        "replay_alerts": replay_alerts,
         "last_scene": last_scene,
-        "health": area_health(area, latest_run, open_alerts, newest_scene_status),
+        "health": area_health(area, latest_live_run, open_alerts),
         "latest_run": run_payload(latest_run),
     }
 
 
 def area_health(
-    area: MonitoringArea,
-    latest_run: MonitoringRun | None,
-    open_alerts: int,
-    newest_scene_status: str | None,
+    area: MonitoringArea, latest_live_run: MonitoringRun | None, open_alerts: int
 ) -> str:
+    """The state of live monitoring, deliberately blind to replays of past imagery."""
+
     if area.status != "ACTIVE":
         return "PAUSED"
-    if latest_run is not None and latest_run.status == "FAILED":
+    if latest_live_run is not None and latest_live_run.status == "FAILED":
         return "ERROR"
     if open_alerts:
         return "ALERT"
-    if newest_scene_status == "CLOUDED":
+    if latest_live_run is not None and latest_live_run.status == "NO_SUITABLE_ACQUISITION":
         return "CLOUDED"
     return "OK"
 
@@ -180,6 +182,17 @@ def alert_payload(alert: Alert) -> dict:
         "persistence_count": alert.persistence_count or 1,
         "last_seen_at": iso_z(alert.last_seen_at),
         "verdict_reasons": load_json(finding.verdict_reasons_json, []) if finding else [],
+        "region_count": len(alert.regions) or 1,
+        "regions": [
+            {
+                "finding_id": region.id,
+                "area_m2": region.area_m2,
+                "centroid_lat": region.centroid_lat,
+                "centroid_lon": region.centroid_lon,
+                "thumbnail": region.thumbnail,
+            }
+            for region in alert.regions
+        ],
     }
 
 
@@ -211,6 +224,7 @@ def finding_payload(finding: Finding) -> dict:
         "seasonal_persists": finding.seasonal_persists,
         "geometry": load_json(finding.geometry_json, None),
         "thumbnail": finding.thumbnail,
+        "alert_id": finding.alert_id,
         "evidence": load_json(finding.evidence_json, {}),
     }
 

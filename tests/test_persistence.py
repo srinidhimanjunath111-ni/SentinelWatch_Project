@@ -14,7 +14,17 @@ from app.models import Alert, AuthorisedZone, Case, Finding, MonitoringArea
 from app.seed_sites import ZONES_FILE, apply_seed_files, load_sites, seed_sites
 from app.services.monitoring import execute_monitoring_run
 from app.snapshot import export_snapshot, restore_snapshot, restore_snapshot_if_empty
-from tests.fakes import BARE, FOREST, Scene, days_ago, install, make_area, queue, quiet_context
+from tests.fakes import (
+    BARE,
+    FOREST,
+    NO_LATE_CONTEXT,
+    Scene,
+    days_ago,
+    install,
+    make_area,
+    queue,
+    quiet_context,
+)
 
 OLD_SCHEMA = """
 CREATE TABLE monitoring_areas (
@@ -254,11 +264,25 @@ def test_seeding_can_be_disabled(monkeypatch):
     assert _areas() == []
 
 
+def test_seed_text_has_no_implementer_shorthand_visible_to_users():
+    zones = json.loads(ZONES_FILE.read_text(encoding="utf-8"))
+    visible = [zone["source"] for zone in zones]
+    for site in load_sites():
+        visible += [site["description"], site["replay"]["note"]]
+    text = " ".join(visible)
+    for phrase in (
+        "null is unknown", "valid_to", "valid_from", "max_cloud_cover", "bbox", "AOI-valid", "SCL",
+        "SUSPECTED_UNAUTHORISED", "AUTHORISED_ACTIVITY", "NATURAL_EVENT", "SEASONAL_BENIGN", "CONSTRUCTION",
+    ):
+        assert phrase not in text, phrase
+    assert any("Expiry not established in the documents reviewed" in source for source in visible)
+
+
 # Snapshot -----------------------------------------------------------------------------
 
 
 def _analysed(monkeypatch):
-    monkeypatch.setattr("app.services.monitoring.fetch_case_context", lambda *a, **k: quiet_context())
+    monkeypatch.setattr("app.services.monitoring.fetch_case_context", lambda *a, **k: (quiet_context(), NO_LATE_CONTEXT))
     monkeypatch.setattr("app.services.monitoring.read_slope_degrees", lambda grid: None)
     install({days_ago(10): Scene(FOREST, BARE), days_ago(40): Scene(FOREST), days_ago(10 + 365): Scene(FOREST)})
     area = make_area()

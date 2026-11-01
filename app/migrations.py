@@ -80,6 +80,7 @@ _ADDITIVE_COLUMNS: dict[str, dict[str, str]] = {
         "centroid_lat": "FLOAT",
         "centroid_lon": "FLOAT",
         "thumbnail": "VARCHAR(512)",
+        "alert_id": "VARCHAR(36)",
     },
     "alerts": {
         "department_id": "VARCHAR(36)",
@@ -119,6 +120,7 @@ _ADDITIVE_INDEXES = {
     "ix_monitoring_runs_replay_id": ("monitoring_runs", "replay_id"),
     "ix_cases_origin": ("cases", "origin"),
     "ix_findings_verdict": ("findings", "verdict"),
+    "ix_findings_alert_id": ("findings", "alert_id"),
     "ix_alerts_created_at": ("alerts", "created_at"),
     "ix_alerts_category": ("alerts", "category"),
     "ix_alerts_aoi_id": ("alerts", "aoi_id"),

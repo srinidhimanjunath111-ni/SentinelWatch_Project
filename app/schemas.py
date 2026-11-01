@@ -103,7 +103,6 @@ class ReplayRequest(BaseModel):
     start_date: str = Field(pattern=r"^\d{4}-\d{2}-\d{2}$")
     end_date: str = Field(pattern=r"^\d{4}-\d{2}-\d{2}$")
     max_scenes: int = Field(default=6, ge=1, le=40)
-    force: bool = False
 
     @field_validator("start_date", "end_date")
     @classmethod

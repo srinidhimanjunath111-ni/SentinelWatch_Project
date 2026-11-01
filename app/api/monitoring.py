@@ -39,7 +39,7 @@ from app.services.payloads import area_payload, load_json, run_payload
 from app.services.scheduler import ACTIVE_RUN_STATES, scheduler
 from app.services.system import models_payload, overview_payload, system_status_payload
 from app.timeutil import iso_z, parse_date, utcnow
-from app.vocabulary import ACTIVE_ALERT_STATUSES, ORIGIN_REPLAY
+from app.vocabulary import ACTIVE_ALERT_STATUSES, ORIGIN_LIVE, ORIGIN_REPLAY
 
 router = APIRouter(prefix="/api", tags=["monitoring"])
 
@@ -77,12 +77,31 @@ def _area_payloads(db: Session, areas: list[MonitoringArea]) -> list[dict]:
         .filter(latest_rank.c.rank == 1)
         .all()
     }
-    open_counts = dict(
-        db.query(Alert.aoi_id, func.count(Alert.id))
-        .filter(Alert.aoi_id.in_(ids), Alert.status.in_(ACTIVE_ALERT_STATUSES))
-        .group_by(Alert.aoi_id)
-        .all()
+    live_rank = (
+        db.query(
+            MonitoringRun.id.label("id"),
+            func.row_number()
+            .over(partition_by=MonitoringRun.aoi_id, order_by=MonitoringRun.started_at.desc())
+            .label("rank"),
+        )
+        .filter(MonitoringRun.aoi_id.in_(ids), MonitoringRun.origin == ORIGIN_LIVE)
+        .subquery()
     )
+    latest_live_runs = {
+        run.aoi_id: run
+        for run in db.query(MonitoringRun)
+        .join(live_rank, MonitoringRun.id == live_rank.c.id)
+        .filter(live_rank.c.rank == 1)
+        .all()
+    }
+    open_counts: dict[str, dict[str, int]] = {}
+    for aoi_id, origin, count in (
+        db.query(Alert.aoi_id, Alert.origin, func.count(Alert.id))
+        .filter(Alert.aoi_id.in_(ids), Alert.status.in_(ACTIVE_ALERT_STATUSES))
+        .group_by(Alert.aoi_id, Alert.origin)
+        .all()
+    ):
+        open_counts.setdefault(aoi_id, {})[origin] = count
     scene_rank = (
         db.query(
             AOIAcquisition.id.label("id"),
@@ -121,9 +140,10 @@ def _area_payloads(db: Session, areas: list[MonitoringArea]) -> list[dict]:
             area_payload(
                 area,
                 latest_run=latest_runs.get(area.id),
-                open_alerts=open_counts.get(area.id, 0),
+                latest_live_run=latest_live_runs.get(area.id),
+                open_alerts=open_counts.get(area.id, {}).get(ORIGIN_LIVE, 0),
+                replay_alerts=open_counts.get(area.id, {}).get(ORIGIN_REPLAY, 0),
                 last_scene=last_scene,
-                newest_scene_status=newest[0].scene_status if newest else None,
             )
         )
     return payloads
@@ -362,7 +382,6 @@ def replay_area(aoi_id: str, payload: ReplayRequest, db: Session = Depends(get_d
             origin=ORIGIN_REPLAY,
             as_of=as_of,
             replay_id=replay_id,
-            force=payload.force,
         )
         run_ids.append(run.id)
         scheduler.submit(run.id, area.id)
@@ -371,7 +390,7 @@ def replay_area(aoi_id: str, payload: ReplayRequest, db: Session = Depends(get_d
         "monitoring_area",
         area.id,
         "replay_started",
-        {"replay_id": replay_id, "dates": dates, "force": payload.force},
+        {"replay_id": replay_id, "dates": dates},
     )
     db.commit()
     return {"replay_id": replay_id, "run_ids": run_ids, "dates": dates}
@@ -392,7 +411,9 @@ def area_timeline(aoi_id: str, limit: int = 120, db: Session = Depends(get_db)):
     )
     case_ids = {link.case_id for link, _ in rows if link.case_id}
     categories: dict[str, set[str]] = {}
+    origins: dict[str, str] = {}
     if case_ids:
+        origins = dict(db.query(Case.id, Case.origin).filter(Case.id.in_(case_ids)).all())
         for case_id, category in (
             db.query(Finding.case_id, Finding.category).filter(Finding.case_id.in_(case_ids)).all()
         ):
@@ -409,6 +430,7 @@ def area_timeline(aoi_id: str, limit: int = 120, db: Session = Depends(get_db)):
             "thumbnail": link.thumbnail,
             "case_id": link.case_id,
             "categories": sorted(categories.get(link.case_id, [])) if link.case_id else [],
+            "origin": origins.get(link.case_id) if link.case_id else None,
             "satellite": acquisition.satellite,
         }
         current = entries.get(date_key)

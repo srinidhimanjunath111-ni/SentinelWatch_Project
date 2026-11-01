@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 from datetime import date, datetime, timedelta
+from types import SimpleNamespace
 
 import numpy as np
 
@@ -146,6 +147,9 @@ def queue(area_id: str, **kwargs) -> str:
         return queue_monitoring_run(db, db.get(MonitoringArea, area_id), **kwargs).id
     finally:
         db.close()
+
+
+NO_LATE_CONTEXT = SimpleNamespace(finish_later=lambda case_id: None)
 
 
 def quiet_context(**overrides) -> dict:

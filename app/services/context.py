@@ -11,8 +11,9 @@ import hashlib
 import json
 import logging
 import math
+import threading
 import time
-from concurrent.futures import ThreadPoolExecutor
+from concurrent.futures import Future, ThreadPoolExecutor
 from concurrent.futures import TimeoutError as FutureTimeout
 from datetime import date, timedelta
 from pathlib import Path
@@ -49,6 +50,8 @@ DISASTER_RADIUS_KM = 150.0
 _FINAL_AFTER_DAYS = 10
 _RECENT_TTL_SECONDS = 6 * 3600
 _OSM_TTL_SECONDS = 30 * 86400
+_OSM_FAILURE_TTL_SECONDS = 30 * 60
+LATE_CONTEXT_SECONDS = 120.0
 
 _FLOOD_WORDS = ("flood",)
 _FIRE_WORDS = ("wildfire", "fire")
@@ -402,6 +405,9 @@ def fetch_osm_features(bbox: list[float]) -> list[dict[str, Any]]:
     cached = _cache_get("osm", key, _OSM_TTL_SECONDS)
     if cached is not None:
         return cached
+    # Overpass is often overloaded. After all mirrors fail, leave it alone for a while.
+    if _cache_get("osm-failed", key, _OSM_FAILURE_TTL_SECONDS) is not None:
+        raise RuntimeError("Overpass failed recently; not retrying yet.")
     box = f"{south:.5f},{west:.5f},{north:.5f},{east:.5f}"
     query = (
         "[out:json][timeout:25];("
@@ -426,6 +432,7 @@ def fetch_osm_features(bbox: list[float]) -> list[dict[str, Any]]:
         except (httpx.HTTPError, ValueError) as error:
             errors.append(f"{mirror}: {error}")
     if body is None:
+        _cache_put("osm-failed", key, True)
         raise RuntimeError("All Overpass mirrors failed. " + " | ".join(errors))
     features = []
     for element in body.get("elements") or []:
@@ -519,13 +526,92 @@ def read_slope_degrees(grid: AOIGrid) -> np.ndarray | None:
 # Assembly -----------------------------------------------------------------------------
 
 
+class LateContext:
+    """Sources still running when the time budget ran out, to complete the case afterwards."""
+
+    def __init__(self, pool: ThreadPoolExecutor, futures: dict[str, Future], unknown: list[str]):
+        self._pool = pool
+        self._futures = {name: futures[name] for name in unknown}
+
+    def finish_later(self, case_id: str) -> None:
+        if not self._futures:
+            return
+        thread = threading.Thread(
+            target=self._complete, args=(case_id,), name="late-context", daemon=True
+        )
+        thread.start()
+
+    def _complete(self, case_id: str) -> None:
+        results: dict[str, Any] = {}
+        failures: dict[str, str] = {}
+        deadline = time.monotonic() + LATE_CONTEXT_SECONDS
+        for name, future in self._futures.items():
+            try:
+                results[name] = future.result(timeout=max(0.0, deadline - time.monotonic()))
+            except FutureTimeout:
+                failures[name] = "No answer in time."
+            except Exception as error:  # Optional by design; the case keeps saying unavailable.
+                failures[name] = str(error)[:300]
+        try:
+            update_case_context(case_id, results, failures)
+        except Exception:
+            logger.exception("Could not store late context for case %s", case_id)
+
+
+def update_case_context(
+    case_id: str, results: dict[str, Any], failures: dict[str, str]
+) -> None:
+    """Merge sources that answered after dispatch into the stored case."""
+
+    from app.database import SessionLocal
+    from app.models import Case
+
+    db = SessionLocal()
+    try:
+        case = db.get(Case, case_id)
+        if case is None:
+            return
+        stored = json.loads(case.context_json or "{}")
+        raw: dict[str, Any] = {"disasters": [], "osm_features": []}
+        for name, value in results.items():
+            _store_source(raw, name, value)
+        public = public_context(raw)
+        if "rainfall" in results:
+            stored["rainfall"] = results["rainfall"]
+        stored["disasters"] = (stored.get("disasters") or []) + public["disasters"]
+        if "osm" in results:
+            stored["protected_areas"] = public["protected_areas"]
+            stored["osm_features"] = public["osm_features"]
+        unavailable = [
+            item for item in stored.get("unavailable") or [] if item.get("source") not in results
+        ]
+        for item in unavailable:
+            if item.get("source") in failures:
+                item["reason"] = failures[item["source"]]
+        stored["unavailable"] = unavailable
+        case.context_json = json.dumps(stored)
+        db.commit()
+    finally:
+        db.close()
+
+
+def _store_source(context: dict[str, Any], name: str, value: Any) -> None:
+    if name == "rainfall":
+        context["rainfall"] = value
+    elif name in ("eonet", "gdacs"):
+        context["disasters"].extend(value)
+    else:
+        context["osm_features"] = value
+
+
 def fetch_case_context(
     lat: float, lon: float, bbox: list[float], after_date: date, before_date: date | None = None
-) -> dict[str, Any]:
-    """Query every source concurrently within a time budget, recording what was missed.
+) -> tuple[dict[str, Any], LateContext]:
+    """Query every source concurrently within a hard total budget.
 
-    A slow source cannot hold up an alert: it is marked unavailable for this case, while
-    its thread finishes in the background and caches the answer for the next run.
+    Immediate alerting comes first, so nothing here may hold up a dispatch. Whatever has not
+    answered in time is marked unavailable for now, and ``LateContext`` adds it to the case
+    if it answers later. Answers are cached, so the next run has them at once.
     """
 
     context: dict[str, Any] = {
@@ -544,28 +630,20 @@ def fetch_case_context(
     pool = ThreadPoolExecutor(max_workers=len(jobs), thread_name_prefix="context")
     futures = {name: pool.submit(job) for name, job in jobs.items()}
     deadline = time.monotonic() + settings.context_budget_seconds
-    try:
-        for name, future in futures.items():
-            try:
-                value = future.result(timeout=max(0.0, deadline - time.monotonic()))
-            except FutureTimeout:
-                context["unavailable"].append(
-                    {"source": name, "reason": "No answer within the time budget for this case."}
-                )
-                continue
-            except Exception as error:  # Context is optional by design; record and continue.
-                logger.info("Context source %s unavailable: %s", name, error)
-                context["unavailable"].append({"source": name, "reason": str(error)[:300]})
-                continue
-            if name == "rainfall":
-                context["rainfall"] = value
-            elif name in ("eonet", "gdacs"):
-                context["disasters"].extend(value)
-            else:
-                context["osm_features"] = value
-    finally:
-        pool.shutdown(wait=False)
-    return context
+    pending: list[str] = []
+    for name, future in futures.items():
+        try:
+            _store_source(context, name, future.result(timeout=max(0.0, deadline - time.monotonic())))
+        except FutureTimeout:
+            pending.append(name)
+            context["unavailable"].append(
+                {"source": name, "reason": "No answer yet when this alert was dispatched."}
+            )
+        except Exception as error:  # Context is optional by design; record and continue.
+            logger.info("Context source %s unavailable: %s", name, error)
+            context["unavailable"].append({"source": name, "reason": str(error)[:300]})
+    pool.shutdown(wait=False)
+    return context, LateContext(pool, futures, pending)
 
 
 def rasterize_osm(

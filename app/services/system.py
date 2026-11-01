@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import json
 import logging
-from datetime import timedelta
+from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Any
 
@@ -25,7 +25,7 @@ from app.models import (
 from app.satellite.chain import get_chain
 from app.services.dispatch import smtp_status
 from app.timeutil import iso_z, utcnow
-from app.vocabulary import ACTIVE_ALERT_STATUSES, SEASONAL_BENIGN
+from app.vocabulary import ACTIVE_ALERT_STATUSES, ORIGIN_LIVE, ORIGIN_REPLAY, SEASONAL_BENIGN
 
 logger = logging.getLogger(__name__)
 
@@ -155,10 +155,6 @@ def overview_payload(db: Session) -> dict[str, Any]:
         .filter(MonitoringArea.status == "ACTIVE")
         .scalar()
         or 0,
-        "open_alerts": db.query(func.count(Alert.id))
-        .filter(Alert.status.in_(ACTIVE_ALERT_STATUSES))
-        .scalar()
-        or 0,
         "critical_alerts": db.query(func.count(Alert.id))
         .filter(Alert.status.in_(ACTIVE_ALERT_STATUSES), Alert.severity == "critical")
         .scalar()
@@ -174,10 +170,7 @@ def overview_payload(db: Session) -> dict[str, Any]:
             .scalar()
             or 0.0
         ),
-        "alerts_24h": db.query(func.count(Alert.id))
-        .filter(Alert.created_at >= now - timedelta(hours=24))
-        .scalar()
-        or 0,
+        **_alert_counts_by_origin(db, now),
         # In-app deliveries plus emails an SMTP server accepted. A saved .eml was not sent.
         "dispatches_sent": db.query(func.count(NotificationAttempt.id))
         .filter(NotificationAttempt.status.in_(("RECORDED", "SENT")))
@@ -224,6 +217,31 @@ def overview_payload(db: Session) -> dict[str, Any]:
     }
 
 
+def _alert_counts_by_origin(db: Session, now: datetime) -> dict[str, int]:
+    """Totals plus a live and replay split, so past imagery never reads as a live incident."""
+
+    open_alerts = dict(
+        db.query(Alert.origin, func.count(Alert.id))
+        .filter(Alert.status.in_(ACTIVE_ALERT_STATUSES))
+        .group_by(Alert.origin)
+        .all()
+    )
+    recent = dict(
+        db.query(Alert.origin, func.count(Alert.id))
+        .filter(Alert.created_at >= now - timedelta(hours=24))
+        .group_by(Alert.origin)
+        .all()
+    )
+    return {
+        "open_alerts": sum(open_alerts.values()),
+        "open_alerts_live": open_alerts.get(ORIGIN_LIVE, 0),
+        "open_alerts_replay": open_alerts.get(ORIGIN_REPLAY, 0),
+        "alerts_24h": sum(recent.values()),
+        "alerts_24h_live": recent.get(ORIGIN_LIVE, 0),
+        "alerts_24h_replay": recent.get(ORIGIN_REPLAY, 0),
+    }
+
+
 def _activity(db: Session) -> list[dict[str, Any]]:
     items: list[dict[str, Any]] = []
     runs = (
@@ -236,26 +254,41 @@ def _activity(db: Session) -> list[dict[str, Any]]:
     )
     for run, name in runs:
         items.append(
-            {"at": run.completed_at, "type": "run", "text": f"{name}: {run.message}", "area_id": run.aoi_id}
+            {
+                "at": run.completed_at,
+                "type": "run",
+                "text": f"{name}: {run.message}",
+                "area_id": run.aoi_id,
+                "origin": run.origin,
+            }
         )
     alerts = db.query(Alert).order_by(Alert.created_at.desc()).limit(_ACTIVITY_LIMIT).all()
     for alert in alerts:
-        items.append({"at": alert.created_at, "type": "alert", "text": alert.title, "area_id": alert.aoi_id})
+        items.append(
+            {
+                "at": alert.created_at,
+                "type": "alert",
+                "text": alert.title,
+                "area_id": alert.aoi_id,
+                "origin": alert.origin,
+            }
+        )
     dispatches = (
-        db.query(NotificationAttempt, Alert.aoi_id)
+        db.query(NotificationAttempt, Alert.aoi_id, Alert.origin)
         .join(Alert, NotificationAttempt.alert_id == Alert.id)
         .filter(NotificationAttempt.channel != "IN_APP")
         .order_by(NotificationAttempt.created_at.desc())
         .limit(_ACTIVITY_LIMIT)
         .all()
     )
-    for attempt, area_id in dispatches:
+    for attempt, area_id, origin in dispatches:
         items.append(
             {
                 "at": attempt.created_at,
                 "type": "dispatch",
                 "text": f"{attempt.channel} to {attempt.destination}: {attempt.status}",
                 "area_id": area_id,
+                "origin": origin,
             }
         )
     items.sort(key=lambda item: item["at"], reverse=True)

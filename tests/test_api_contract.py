@@ -15,10 +15,20 @@ from sqlalchemy import event
 from app.config import settings
 from app.database import SessionLocal
 from app.main import app
-from app.models import AuditLog, MonitoringRun
+from app.models import Alert, AuditLog, Case, MonitoringRun
 from app.services.events import CLIENT_QUEUE_SIZE, bus, stream_events
 from app.services.monitoring import execute_monitoring_run
-from tests.fakes import BARE, FOREST, Scene, days_ago, install, make_area, queue, quiet_context
+from tests.fakes import (
+    BARE,
+    FOREST,
+    NO_LATE_CONTEXT,
+    Scene,
+    days_ago,
+    install,
+    make_area,
+    queue,
+    quiet_context,
+)
 
 ISO_Z = re.compile(r"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z$")
 AOI_BODY = {
@@ -45,7 +55,7 @@ def client():
 def analysed_case(monkeypatch):
     """A real pipeline result: one case, one alert, dispatched to the outbox."""
 
-    monkeypatch.setattr("app.services.monitoring.fetch_case_context", lambda *a, **k: quiet_context())
+    monkeypatch.setattr("app.services.monitoring.fetch_case_context", lambda *a, **k: (quiet_context(), NO_LATE_CONTEXT))
     monkeypatch.setattr("app.services.monitoring.read_slope_degrees", lambda grid: None)
     install(
         {
@@ -89,6 +99,49 @@ def test_overview_shape_matches_the_contract(client, analysed_case):
     assert body["by_category"]["DEFORESTATION"] == 1
     assert body["by_verdict"]["SUSPECTED_UNAUTHORISED"] == 1
     assert {item["type"] for item in body["activity"]} >= {"run", "alert", "dispatch"}
+
+
+def test_overview_and_area_separate_live_alerts_from_replay(client, analysed_case):
+    db = SessionLocal()
+    try:
+        live = db.query(Alert).one()
+        db.add(
+            Alert(
+                case_id=live.case_id, title="Replay", message="m", severity="critical", status="dispatched",
+                origin="archive_replay", aoi_id=analysed_case, category="MINING", verdict="NEEDS_REVIEW",
+            )
+        )
+        db.commit()
+    finally:
+        db.close()
+    counts = client.get("/api/overview").json()["counts"]
+    assert (counts["open_alerts"], counts["open_alerts_live"], counts["open_alerts_replay"]) == (2, 1, 1)
+    assert (counts["alerts_24h"], counts["alerts_24h_live"], counts["alerts_24h_replay"]) == (2, 1, 1)
+    area = client.get(f"/api/areas/{analysed_case}").json()
+    assert area["open_alerts"] == 1 and area["replay_alerts"] == 1
+    assert all(item.get("origin") for item in client.get("/api/overview").json()["activity"])
+
+
+def test_replay_alone_cannot_mark_a_site_in_alert_or_error(client):
+    area_id = make_area(name="Replay only")
+    db = SessionLocal()
+    try:
+        case = Case(title="c", before_image="/b", after_image="/a", mask_image="/m", aoi_id=area_id, origin="archive_replay")
+        db.add(case)
+        db.flush()
+        db.add(
+            Alert(
+                case_id=case.id, title="Replay", message="m", severity="critical", status="open",
+                origin="archive_replay", aoi_id=area_id,
+            )
+        )
+        db.add(MonitoringRun(aoi_id=area_id, status="FAILED", stage="FAILED", origin="archive_replay"))
+        db.commit()
+    finally:
+        db.close()
+    area = client.get(f"/api/areas/{area_id}").json()
+    assert area["health"] == "OK" and area["open_alerts"] == 0 and area["replay_alerts"] == 1
+    assert area["latest_run"]["origin"] == "archive_replay"
 
 
 def test_every_api_timestamp_is_utc_with_z(client, analysed_case):
@@ -305,7 +358,7 @@ def test_timeline_shape(client, analysed_case):
     entries = client.get(f"/api/areas/{analysed_case}/timeline").json()
     assert set(entries[0]) == {
         "date", "product_id", "cloud_cover", "aoi_clear_fraction", "status", "thumbnail", "case_id",
-        "categories", "satellite",
+        "categories", "satellite", "origin",
     }
     newest = entries[0]
     assert newest["status"] == "CHANGE" and newest["case_id"] and newest["categories"] == ["DEFORESTATION"]
@@ -341,6 +394,23 @@ def test_replay_endpoint_returns_ids_in_date_order(client, monkeypatch):
         assert {run.origin for run in runs} == {"archive_replay"}
     finally:
         db.close()
+
+
+def test_replay_request_has_no_force_field_requirement_and_can_repeat(client, monkeypatch):
+    from app.services.scheduler import scheduler
+
+    monkeypatch.setattr(scheduler, "submit", lambda run_id, aoi_id: None)
+    day = days_ago(20)
+    install({day: Scene()})
+    area = client.post("/api/areas", json=AOI_BODY).json()
+    payload = {"start_date": str(day), "end_date": str(day)}
+    first = client.post(f"/api/areas/{area['id']}/replay", json=payload).json()
+    db = SessionLocal()
+    db.query(MonitoringRun).update({MonitoringRun.status: "COMPLETED"})
+    db.commit()
+    db.close()
+    second = client.post(f"/api/areas/{area['id']}/replay", json=payload).json()
+    assert first["replay_id"] != second["replay_id"]
 
 
 def test_replay_validates_dates(client):
