@@ -499,7 +499,7 @@ a.log-text:hover { color: var(--text); }
 .bar-label { color: var(--text-3); font-size: 0.923rem; }
 .bar-track { position: relative; height: 10px; }
 .bar-fill { display: block; height: 100%; min-width: 2px; background: var(--line-strong); border-radius: 0 4px 4px 0; }
-.bar-row.is-current .bar-fill { background: #6da7ec; }
+.bar-row.is-current .bar-fill { background: #3987e5; }
 .bar-row.is-current .bar-label, .bar-row.is-current .bar-value { color: var(--text); font-weight: 500; }
 .bar-value { color: var(--text-2); font-size: 0.923rem; text-align: right; white-space: nowrap; }
 .bar-normal { position: absolute; top: -2px; bottom: -2px; width: 1px; background: var(--text-2); }
@@ -508,7 +508,7 @@ a.log-text:hover { color: var(--text); }
 .ndvi-legend { display: inline-flex; align-items: center; gap: 0.375rem; color: var(--text-2); font-size: 0.846rem; }
 .ndvi-ramp { display: inline-block; width: 6.5rem; height: 8px; border-radius: 2px; background: linear-gradient(90deg, #b2182b, #ef8a62, #f7f7f7, #67a9cf, #2166ac); }
 .metric-bar { display: block; width: 100%; min-width: 3rem; height: 4px; background: var(--surface-3); border-radius: 2px; overflow: hidden; }
-.metric-bar-fill { display: block; height: 100%; background: #6da7ec; border-radius: 0 2px 2px 0; }
+.metric-bar-fill { display: block; height: 100%; background: #3987e5; border-radius: 0 2px 2px 0; }
 .metric-col { width: 28%; }
 
 /* ------------------------------------------------------------- site */
@@ -621,7 +621,7 @@ a.scene-link:hover .imgbox { box-shadow: 0 0 0 1px var(--text-2); }
 .plain-list { display: flex; flex-direction: column; gap: 0.25rem; color: var(--text-2); }
 .plain-list li { padding-left: 0.875rem; position: relative; }
 .plain-list li::before { content: ""; position: absolute; left: 0; top: 0.6em; width: 4px; height: 4px; background: var(--text-3); border-radius: 50%; }
-.role { text-transform: none; }
+.model-card td a .icon { display: inline-block; vertical-align: -2px; margin-left: 0.25rem; }
 .source-list { display: flex; flex-direction: column; padding: 0.25rem 0; }
 .source-row { display: grid; grid-template-columns: 0.75rem minmax(0, 1fr); gap: 0 0.5rem; align-items: center; padding: 0.375rem 0.75rem; }
 .source-name { font-weight: 500; }

@@ -75,18 +75,23 @@ function externalLink(url, label) {
   return h("a", { href: url, target: "_blank", rel: "noopener noreferrer" }, label, icon("external", { size: 12 }));
 }
 
+/** The registry lists one row per split. Operators read one row per dataset. */
 function datasetTable(datasets) {
   if (!datasets.length) return null;
+  const grouped = new Map();
+  for (const item of datasets) {
+    const key = `${item.name}|${item.licence}`;
+    if (!grouped.has(key)) grouped.set(key, { ...item, splits: [] });
+    if (item.role) grouped.get(key).splits.push(`${humanise(item.role)} ${formatCount(item.samples)}`.trim());
+  }
   return h("div.table-scroll", h("table.data-table.data-table-compact",
     h("thead", h("tr",
       h("th", { scope: "col" }, "Dataset"),
-      h("th", { scope: "col" }, "Role"),
-      h("th", { scope: "col", class: "num" }, "Samples"),
+      h("th", { scope: "col" }, "Samples"),
       h("th", { scope: "col" }, "Licence"))),
-    h("tbody", datasets.map((item) => h("tr",
+    h("tbody", [...grouped.values()].map((item) => h("tr",
       h("td", externalLink(item.url, item.name)),
-      h("td", { class: "role" }, humanise(item.role)),
-      h("td.num", formatCount(item.samples)),
+      h("td", item.splits.join(" · ")),
       h("td", item.licence || ""))))));
 }
 
@@ -108,8 +113,19 @@ function perClassTable(perClass) {
         h("td.num", formatMetric(values && values.iou))))))));
 }
 
+function datasetKeyLabel(name) {
+  return humanise(name).replace(/\boscd\b/gi, "OSCD");
+}
+
 function perDatasetTable(perDataset) {
-  const rows = Object.entries(perDataset || {});
+  // The registry can repeat one evaluation under two keys; identical results are one row.
+  const seen = new Set();
+  const rows = Object.entries(perDataset || {}).filter(([, values]) => {
+    const sig = JSON.stringify(values);
+    if (seen.has(sig)) return false;
+    seen.add(sig);
+    return true;
+  });
   if (!rows.length) return null;
   const keys = [...new Set(rows.flatMap(([, values]) => Object.keys(values || {})))].filter((key) => ["f1", "iou", "precision", "recall", "accuracy"].includes(key));
   return h("div",
@@ -119,7 +135,7 @@ function perDatasetTable(perDataset) {
         h("th", { scope: "col" }, "Dataset"),
         keys.map((key) => h("th", { scope: "col", class: "num" }, key === "f1" ? "F1" : key === "iou" ? "IoU" : humanise(key))))),
       h("tbody", rows.map(([name, values]) => h("tr",
-        h("td", humanise(name)),
+        h("td", datasetKeyLabel(name)),
         keys.map((key) => h("td.num", formatMetric(values && values[key])))))))));
 }
 
@@ -194,7 +210,7 @@ function providerRow(provider) {
   const known = PROVIDER_NAMES[provider.name] || { name: humanise(provider.name) };
   const used = Boolean(provider.last_success_at);
   let health = "CLOUDED";
-  let state = "Standby";
+  let state = "Ready";
   if (!provider.healthy) {
     health = "ERROR";
     state = "Not responding, next source in use";
