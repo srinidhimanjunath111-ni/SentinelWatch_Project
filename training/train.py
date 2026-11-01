@@ -13,14 +13,15 @@ import os
 
 os.environ.setdefault("PYTORCH_ENABLE_MPS_FALLBACK", "1")
 # Measured on the 8 GB M1: without a cap the MPS allocator grows to its 5.7 GB recommended limit.
-# 0.65 of that keeps the process footprint under about 4 GB, with no loss of speed.
-os.environ.setdefault("PYTORCH_MPS_HIGH_WATERMARK_RATIO", "0.65")
+# 0.58 of that keeps the process footprint under about 4 GB, with no loss of speed.
+os.environ.setdefault("PYTORCH_MPS_HIGH_WATERMARK_RATIO", "0.58")
 os.environ.setdefault("PYTORCH_MPS_LOW_WATERMARK_RATIO", "0.5")
 
 import argparse
 import json
 import math
 import random
+from dataclasses import asdict
 from datetime import UTC, datetime
 from pathlib import Path
 from time import perf_counter
@@ -33,12 +34,16 @@ from app.ml.preprocessing import (
     BAND_ORDER,
     NORMALISE_PER_DATE,
     NORMALISE_POOLED,
+    apply_date_shift,
+    estimate_date_shift,
     normalise_pair,
 )
 from app.ml.siamese_unet import SiameseUNet
 from data_tools.fetch_oscd import IGNORE, ChangeRecord, load_records
-from training.dataset import ChangeAugment, ChangeSampler, to_reflectance
+from training.dataset import CROP_SIZES, ChangeAugment, ChangeSampler, to_reflectance
 from training.metrics import ScoreHistogram, average_precision, best_shared_threshold
+
+MAX_CONSECUTIVE_SKIPS = 10
 
 
 def segmentation_loss(
@@ -74,21 +79,22 @@ def predict_record(
     device: str,
     normalisation: str,
     *,
+    align_dates: bool = False,
     batch_size: int = 4,
 ) -> tuple[np.ndarray, np.ndarray]:
-    """Whole-record probability, normalised as live inference is. Returns (probability, scored).
+    """Whole-record raw logits, normalised as live inference is. Returns (logits, scored).
 
     Statistics use every pixel seen clear, labelled or not, because live inference cannot know
     which pixels a label would have covered. Only labelled clear pixels are scored.
     """
 
     seen = record.pixel_valid()
-    before, after = normalise_pair(
-        to_reflectance(record.before), to_reflectance(record.after), seen, normalisation
-    )
+    before, after = to_reflectance(record.before), to_reflectance(record.after)
+    if align_dates:
+        after, seen = apply_date_shift(after, seen, estimate_date_shift(before, after, seen))
+    before, after = normalise_pair(before, after, seen, normalisation)
     logits = sliding_window_logits(model, (before, after), 1, device=device, batch_size=batch_size)[0]
-    probability = torch.sigmoid(torch.from_numpy(logits)).numpy()
-    return probability, seen & (record.mask != IGNORE)
+    return logits, seen & (record.mask != IGNORE)
 
 
 def validate(
@@ -97,6 +103,7 @@ def validate(
     device: str,
     normalisation: str,
     *,
+    align_dates: bool = False,
     batch_size: int = 4,
 ) -> dict:
     """Mean per-source F1 at one shared threshold, with threshold-free AP per source."""
@@ -104,14 +111,14 @@ def validate(
     model.eval()
     per_source: dict[str, ScoreHistogram] = {}
     for record in records:
-        probability, scored = predict_record(
-            model, record, device, normalisation, batch_size=batch_size
+        logits, scored = predict_record(
+            model, record, device, normalisation, align_dates=align_dates, batch_size=batch_size
         )
         per_source.setdefault(record.source, ScoreHistogram()).update(
-            probability, record.mask == 1, scored
+            logits, record.mask == 1, scored
         )
     threshold, mean_f1 = best_shared_threshold(per_source)
-    result = {"threshold": threshold, "f1": mean_f1, "per_source": {}}
+    result = {"threshold": threshold, "f1": mean_f1, "per_source": {}, "histograms": per_source}
     for source, histogram in per_source.items():
         best_threshold, best = histogram.best_threshold()
         result["per_source"][source] = {
@@ -126,11 +133,23 @@ def validate(
     return result
 
 
-def load_change_records(datasets: list[str], split: str) -> list[ChangeRecord]:
+def load_change_records(
+    datasets: list[str], split: str, oscd_val_cities: list[str] | None = None
+) -> list[ChangeRecord]:
+    """Records for a split. `oscd_val_cities` re-partitions the official train cities for k-fold."""
+
     records: list[ChangeRecord] = []
     for dataset in datasets:
         if dataset == "oscd":
-            records.extend(load_records(split))
+            if oscd_val_cities is None or split == "test":
+                records.extend(load_records(split))
+            else:
+                pool = load_records("train") + load_records("val")
+                chosen = set(oscd_val_cities)
+                unknown = chosen - {record.name for record in pool}
+                if unknown:
+                    raise ValueError(f"Not official train cities: {sorted(unknown)}")
+                records.extend(r for r in pool if (r.name in chosen) == (split == "val"))
         elif dataset == "india_forest":
             from data_tools.build_india_forest_change import load_records as load_forest
 
@@ -138,6 +157,19 @@ def load_change_records(datasets: list[str], split: str) -> list[ChangeRecord]:
         else:
             raise ValueError(f"Unknown dataset {dataset!r}")
     return records
+
+
+def align_record(record: ChangeRecord) -> tuple[int, int]:
+    """Co-register a training record in place; pixels without a source become ignored."""
+
+    seen = record.pixel_valid()
+    shift = estimate_date_shift(to_reflectance(record.before), to_reflectance(record.after), seen)
+    if shift != (0, 0):
+        moved, moved_seen = apply_date_shift(record.after, seen, shift)
+        record.after = moved
+        record.valid = moved_seen
+        record.mask = np.where(moved_seen, record.mask, IGNORE).astype(np.uint8)
+    return shift
 
 
 def positive_fraction(records: list[ChangeRecord]) -> float:
@@ -173,6 +205,7 @@ def build_payload(model, args, step, threshold, val_metrics, device, seconds) ->
         "threshold": float(threshold),
         "bands": list(BAND_ORDER),
         "normalisation": args.normalisation_id,
+        "align_dates": args.align_dates,
         "datasets": list(args.datasets),
         "step": int(step),
         "device": device,
@@ -189,7 +222,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--run-dir", type=Path, default=Path("data/processed/runs/change_v1"))
     parser.add_argument("--steps", type=int, default=6000)
     parser.add_argument("--val-every", type=int, default=250)
-    parser.add_argument("--batch-size", type=int, default=8)
+    parser.add_argument("--batch-size", type=int, default=6)
     parser.add_argument("--base-channels", type=int, default=32)
     parser.add_argument("--dropout", type=float, default=0.1)
     parser.add_argument("--learning-rate", type=float, default=1e-3)
@@ -199,6 +232,22 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--norm", choices=("batch", "group"), default="batch")
     parser.add_argument("--normalisation", choices=("pooled", "per_date"), default="pooled")
     parser.add_argument("--ema-decay", type=float, default=0.0, help="0 disables weight averaging")
+    parser.add_argument(
+        "--align-dates",
+        action="store_true",
+        help="Co-register dates from imagery before training and at inference",
+    )
+    parser.add_argument(
+        "--oscd-val-cities",
+        default=None,
+        help="Comma-separated official train cities to validate on (k-fold); 'none' trains on all",
+    )
+    parser.add_argument(
+        "--select",
+        choices=("best", "last"),
+        default="best",
+        help="Save the best validation step, or always the final one (fixed-length training)",
+    )
     parser.add_argument("--india-share", type=float, default=0.5, help="Sampling share of India forest")
     parser.add_argument("--init-from", type=Path, default=None, help="Warm-start weights")
     parser.add_argument("--resume", action="store_true")
@@ -215,8 +264,15 @@ def main() -> None:
     torch.manual_seed(args.seed)
     device = args.device or select_device()
     args.run_dir.mkdir(parents=True, exist_ok=True)
-    train_records = load_change_records(args.datasets, "train")
-    val_records = load_change_records(args.datasets, "val")
+    val_cities = None
+    if args.oscd_val_cities is not None:
+        val_cities = [] if args.oscd_val_cities == "none" else args.oscd_val_cities.split(",")
+    train_records = load_change_records(args.datasets, "train", val_cities)
+    val_records = load_change_records(args.datasets, "val", val_cities)
+    if args.align_dates:
+        shifts = {record.name: align_record(record) for record in train_records}
+        moved = {name: shift for name, shift in shifts.items() if shift != (0, 0)}
+        print(f"Aligned {len(moved)} of {len(shifts)} training pairs: {moved}", flush=True)
     pos_fraction = positive_fraction(train_records)
     pos_weight = min(args.max_pos_weight, (1 - pos_fraction) / max(pos_fraction, 1e-6))
     source_weights = (
@@ -267,6 +323,10 @@ def main() -> None:
     if args.resume and last_path.is_file():
         state = torch.load(last_path, map_location=device, weights_only=True)
         model.load_state_dict(state["model_state"])
+        if ema_model is not None and (args.run_dir / "last_ema.pt").is_file():
+            ema_model.load_state_dict(
+                torch.load(args.run_dir / "last_ema.pt", map_location=device, weights_only=True)
+            )
         optimizer.load_state_dict(state["optimizer_state"])
         scheduler.load_state_dict(state["scheduler_state"])
         start_step, best_f1 = int(state["step"]), float(state["best_f1"])
@@ -285,10 +345,12 @@ def main() -> None:
     )
     started = perf_counter()
     window_loss: list[float] = []
+    skipped_steps = consecutive_skips = 0
     model.train()
     for step in range(start_step, args.steps):
         before, after, target = sampler.batch(args.batch_size)
         optimizer.zero_grad(set_to_none=True)
+        logits = loss = None
         try:
             logits = model(
                 torch.from_numpy(before).to(device), torch.from_numpy(after).to(device)
@@ -297,14 +359,19 @@ def main() -> None:
                 logits, torch.from_numpy(target).to(device), pos_weight, args.dice_weight
             )
             loss.backward()
+            consecutive_skips = 0
         except RuntimeError as error:
-            # Other agents share this machine, so MPS headroom varies. Dropping one batch is
-            # better than losing the run; repeated failures still surface in the log.
+            # Other agents share this machine, so MPS headroom varies, and dropping one batch beats
+            # losing the run. A run of them means it is not really training, so stop and say so.
             if "out of memory" not in str(error) or device != "mps":
                 raise
+            skipped_steps += 1
+            consecutive_skips += 1
+            if consecutive_skips >= MAX_CONSECUTIVE_SKIPS:
+                raise RuntimeError(f"{consecutive_skips} consecutive MPS failures at step {step + 1}") from error
             print(f"step {step + 1}: MPS out of memory, batch skipped", flush=True)
+            del logits, loss
             optimizer.zero_grad(set_to_none=True)
-            del error
             torch.mps.empty_cache()
             scheduler.step()
             continue
@@ -323,13 +390,15 @@ def main() -> None:
                         value.mul_(decay).add_(source[name].detach(), alpha=1 - decay)
                     else:
                         value.copy_(source[name])
-        if device == "mps" and done % 25 == 0:
+        if device == "mps" and done % 10 == 0:
             # The MPS allocator holds freed buffers until told otherwise, which fragments memory.
             torch.mps.empty_cache()
         if done % args.val_every == 0 or done == args.steps:
             seconds = elapsed_before + perf_counter() - started
             scored_model = ema_model if ema_model is not None else model
-            metrics = validate(scored_model, val_records, device, args.normalisation_id)
+            metrics = validate(
+                scored_model, val_records, device, args.normalisation_id, align_dates=args.align_dates
+            )
             record = {
                 "step": done,
                 "train_loss": float(np.mean(window_loss)),
@@ -353,8 +422,17 @@ def main() -> None:
                 flush=True,
             )
             window_loss = []
-            if metrics["f1"] > best_f1:
-                best_f1 = metrics["f1"]
+            # Save histograms from the final state, for out-of-fold threshold and calibration work.
+            np.savez(
+                args.run_dir / "val_histograms.npz",
+                **{
+                    f"{source}_{part}": getattr(histogram, part)
+                    for source, histogram in metrics["histograms"].items()
+                    for part in ("positive", "negative")
+                },
+            )
+            if args.select == "last" or metrics["f1"] > best_f1:
+                best_f1 = max(best_f1, metrics["f1"])
                 payload = build_payload(
                     scored_model, args, done, metrics["threshold"], metrics, device, seconds
                 )
@@ -370,6 +448,11 @@ def main() -> None:
                 },
                 last_path,
             )
+            if ema_model is not None:
+                torch.save(
+                    {k: v.detach().cpu() for k, v in ema_model.state_dict().items()},
+                    args.run_dir / "last_ema.pt",
+                )
             if device == "mps":
                 torch.mps.empty_cache()
             model.train()
@@ -383,7 +466,8 @@ def main() -> None:
         "device": device,
         "steps": args.steps,
         "batch_size": args.batch_size,
-        "crop_sizes": [128, 160, 192, 224, 256],
+        "crop_sizes": list(CROP_SIZES),
+        "augment": asdict(ChangeAugment()),
         "base_channels": args.base_channels,
         "dropout": args.dropout,
         "parameters": parameters,
@@ -394,6 +478,11 @@ def main() -> None:
         "norm": args.norm,
         "ema_decay": args.ema_decay,
         "learning_rate": args.learning_rate,
+        "select": args.select,
+        "align_dates": args.align_dates,
+        "skipped_steps": skipped_steps,
+        "oscd_val_cities": val_cities,
+        "train_pixels": int(sum(r.mask.size for r in train_records)),
         "train_samples": _count_by_source(train_records),
         "val_samples": _count_by_source(val_records),
         "train_names": [r.name for r in train_records],

@@ -22,6 +22,18 @@ CROP_SIZES = (128, 160, 192, 224, 256)
 REFLECTANCE_SCALE = 1.0 / 10000.0
 
 
+def mean_pixels_per_step(batch_size: int) -> float:
+    """Mean pixels drawn per step under the crop sizes and batch rule in ChangeSampler.batch."""
+
+    return float(np.mean([_batch_count(batch_size, size) * size * size for size in CROP_SIZES]))
+
+
+def _batch_count(batch_size: int, size: int) -> int:
+    # Hold memory per step near constant: larger crops get a smaller batch. Measured on the 8 GB
+    # machine, 8 x 192 px peaks at 3.3 GB of MPS memory, so 6 x 192 px (about 2.5 GB) is the ceiling.
+    return max(3, min(batch_size, int(batch_size * (192 / size) ** 2)))
+
+
 def to_reflectance(stack: np.ndarray) -> np.ndarray:
     """OSCD and the India caches store reflectance x 10000 as uint16."""
 
@@ -46,6 +58,12 @@ class ChangeAugment:
     """Training augmentation strengths for the change sampler."""
 
     positive_crop_probability: float = 0.75
+    # Draw this many crops around change and keep the one with the most change. One draw left
+    # training batches at 3.8 percent change against a 2.3 percent base rate, barely enriched.
+    positive_crop_candidates: int = 6
+    # Probability of shifting one date by 1 px. Measured OSCD pairs sit up to 1-2 px apart, and
+    # training on them unshifted teaches the model to read misregistration edges as change.
+    misregistration_probability: float = 0.3
     gain_jitter: float = 0.05
     offset_jitter: float = 0.005
     full_scene_stats_probability: float = 0.5
@@ -98,11 +116,15 @@ class ChangeSampler:
         crop_h, crop_w = min(size, height), min(size, width)
         positives = self.positives[index]
         if len(positives) and self.rng.random() < self.augment.positive_crop_probability:
-            row, col = positives[self.rng.integers(len(positives))]
-            top = int(row) - int(self.rng.integers(0, crop_h))
-            left = int(col) - int(self.rng.integers(0, crop_w))
-            top = int(np.clip(top, 0, height - crop_h))
-            left = int(np.clip(left, 0, width - crop_w))
+            best_count, top, left = -1, 0, 0
+            for _ in range(self.augment.positive_crop_candidates):
+                row, col = positives[self.rng.integers(len(positives))]
+                candidate_top = int(np.clip(int(row) - int(self.rng.integers(0, crop_h)), 0, height - crop_h))
+                candidate_left = int(np.clip(int(col) - int(self.rng.integers(0, crop_w)), 0, width - crop_w))
+                window = record.mask[candidate_top : candidate_top + crop_h, candidate_left : candidate_left + crop_w]
+                count = int(np.count_nonzero(window == 1))
+                if count > best_count:
+                    best_count, top, left = count, candidate_top, candidate_left
         else:
             top = int(self.rng.integers(0, height - crop_h + 1))
             left = int(self.rng.integers(0, width - crop_w + 1))
@@ -140,6 +162,9 @@ class ChangeSampler:
             # A date compared with itself contains no change, whatever the radiometry says.
             after = before.copy()
             mask = np.where(mask == IGNORE, IGNORE, 0).astype(np.uint8)
+        if rng.random() < aug.misregistration_probability:
+            shift = (int(rng.integers(-1, 2)), int(rng.integers(-1, 2)))
+            after = np.roll(after, shift, axis=(-2, -1))
         before = self._radiometric(before)
         after = self._radiometric(after)
         if rng.random() < aug.cutout_probability:
@@ -163,10 +188,7 @@ class ChangeSampler:
 
     def batch(self, batch_size: int) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
         size = int(self.rng.choice(CROP_SIZES))
-        # Hold memory per step near constant: larger crops get a smaller batch. A full batch of 8
-        # at 256 px exhausts the MPS allowance on the 8 GB machine (measured: out-of-memory at 3.47 GB).
-        count = max(4, min(batch_size, int(batch_size * (192 / size) ** 2)))
-        samples = [self._sample(size) for _ in range(count)]
+        samples = [self._sample(size) for _ in range(_batch_count(batch_size, size))]
         return (
             np.stack([s[0] for s in samples]),
             np.stack([s[1] for s in samples]),

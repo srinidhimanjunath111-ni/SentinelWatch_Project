@@ -4,7 +4,20 @@ from __future__ import annotations
 
 import numpy as np
 
-HISTOGRAM_BINS = 200
+HISTOGRAM_BINS = 480
+LOGIT_LIMIT = 12.0
+# Both search limits are far from anything a useful threshold should reach. A result at either one
+# means the model is badly calibrated, and callers report it rather than hide it.
+THRESHOLD_LOW = 0.01
+THRESHOLD_HIGH = 0.995
+
+
+def probability_to_logit(probability: float) -> float:
+    return float(np.log(probability / (1.0 - probability)))
+
+
+def logit_to_probability(logit: float) -> float:
+    return float(1.0 / (1.0 + np.exp(-logit)))
 
 
 def binary_metrics(
@@ -33,37 +46,59 @@ def binary_metrics(
 
 
 class ScoreHistogram:
-    """Per-class probability histograms, so a threshold sweep needs no per-pixel storage."""
+    """Per-class histograms over logits, so a threshold sweep needs no per-pixel storage.
 
-    def __init__(self, bins: int = HISTOGRAM_BINS):
+    Bins are in logit space because a saturated model puts most scores within a hair of 0 or 1.
+    Uniform probability bins cannot resolve those, which hid the true optimum for change model v1.
+    """
+
+    def __init__(self, bins: int = HISTOGRAM_BINS, limit: float = LOGIT_LIMIT):
         self.bins = bins
+        self.limit = limit
         self.positive = np.zeros(bins, dtype=np.int64)
         self.negative = np.zeros(bins, dtype=np.int64)
 
-    def update(self, probability: np.ndarray, target: np.ndarray, valid: np.ndarray) -> None:
-        indices = np.minimum((probability[valid] * self.bins).astype(np.int64), self.bins - 1)
+    def update(self, logits: np.ndarray, target: np.ndarray, valid: np.ndarray) -> None:
+        scaled = (np.clip(logits[valid], -self.limit, self.limit) + self.limit) / (2 * self.limit)
+        indices = np.minimum((scaled * self.bins).astype(np.int64), self.bins - 1)
         labels = target[valid].astype(bool)
         self.positive += np.bincount(indices[labels], minlength=self.bins)
         self.negative += np.bincount(indices[~labels], minlength=self.bins)
 
-    def metrics_at(self, threshold: float) -> dict[str, float | int]:
-        cut = int(np.ceil(threshold * self.bins))
+    def add(self, other: ScoreHistogram) -> None:
+        self.positive += other.positive
+        self.negative += other.negative
+
+    def centres(self) -> np.ndarray:
+        width = 2 * self.limit / self.bins
+        return -self.limit + (np.arange(self.bins) + 0.5) * width
+
+    def cut_for_logit(self, logit: float) -> int:
+        position = (logit + self.limit) / (2 * self.limit) * self.bins
+        return int(np.clip(np.ceil(position), 0, self.bins))
+
+    def logit_at(self, cut: int) -> float:
+        return -self.limit + cut * 2 * self.limit / self.bins
+
+    def metrics_at_cut(self, cut: int) -> dict[str, float | int]:
         tp = int(self.positive[cut:].sum())
         fn = int(self.positive[:cut].sum())
         fp = int(self.negative[cut:].sum())
         tn = int(self.negative[:cut].sum())
         return binary_metrics(tp, fp, tn, fn)
 
-    def best_threshold(self, low: float = 0.05, high: float = 0.95) -> tuple[float, dict]:
-        """Threshold maximising F1. Call this on validation data only."""
+    def metrics_at(self, threshold: float) -> dict[str, float | int]:
+        """Metrics at a probability threshold on the raw (temperature 1) scale."""
 
-        best_threshold, best = 0.5, self.metrics_at(0.5)
-        for cut in range(int(low * self.bins), int(high * self.bins) + 1):
-            threshold = cut / self.bins
-            metrics = self.metrics_at(threshold)
-            if metrics["f1"] > best["f1"]:
-                best_threshold, best = threshold, metrics
-        return best_threshold, best
+        return self.metrics_at_cut(self.cut_for_logit(probability_to_logit(threshold)))
+
+    def best_threshold(self, low: float = THRESHOLD_LOW, high: float = THRESHOLD_HIGH) -> tuple[float, dict]:
+        """Raw-scale threshold maximising F1. Call this on validation data only."""
+
+        first = self.cut_for_logit(probability_to_logit(low))
+        last = self.cut_for_logit(probability_to_logit(high))
+        best_cut = max(range(first, last + 1), key=lambda cut: self.metrics_at_cut(cut)["f1"])
+        return logit_to_probability(self.logit_at(best_cut)), self.metrics_at_cut(best_cut)
 
 
 def average_precision(histogram: ScoreHistogram) -> float:
@@ -86,22 +121,35 @@ def average_precision(histogram: ScoreHistogram) -> float:
 
 
 def best_shared_threshold(
-    histograms: dict[str, ScoreHistogram], low: float = 0.05, high: float = 0.95
+    histograms: dict[str, ScoreHistogram],
+    low: float = THRESHOLD_LOW,
+    high: float = THRESHOLD_HIGH,
 ) -> tuple[float, float]:
-    """The one threshold maximising mean F1 across sources. Call on validation data only.
+    """The one raw-scale threshold maximising mean F1 across sources. Validation data only.
 
     Averaging per source stops the source with most labelled pixels from setting the threshold
     alone, which matters because a deployed model has exactly one.
     """
 
-    bins = next(iter(histograms.values())).bins
-    best_threshold, best_score = 0.5, -1.0
-    for cut in range(int(low * bins), int(high * bins) + 1):
-        threshold = cut / bins
-        score = float(np.mean([h.metrics_at(threshold)["f1"] for h in histograms.values()]))
+    any_histogram = next(iter(histograms.values()))
+    first = any_histogram.cut_for_logit(probability_to_logit(low))
+    last = any_histogram.cut_for_logit(probability_to_logit(high))
+    best_cut, best_score = first, -1.0
+    for cut in range(first, last + 1):
+        score = float(np.mean([h.metrics_at_cut(cut)["f1"] for h in histograms.values()]))
         if score > best_score:
-            best_threshold, best_score = threshold, score
-    return best_threshold, best_score
+            best_cut, best_score = cut, score
+    return logit_to_probability(any_histogram.logit_at(best_cut)), best_score
+
+
+def temperature_nll(histogram: ScoreHistogram, temperature: float) -> float:
+    """Mean negative log likelihood of the histogram's scores after dividing logits by T."""
+
+    centres = histogram.centres() / temperature
+    positive_loss = np.logaddexp(0.0, -centres)
+    negative_loss = np.logaddexp(0.0, centres)
+    total = histogram.positive.sum() + histogram.negative.sum()
+    return float(((histogram.positive * positive_loss) + (histogram.negative * negative_loss)).sum() / max(total, 1))
 
 
 def multiclass_metrics(confusion: np.ndarray, classes: tuple[str, ...]) -> dict:

@@ -1,0 +1,282 @@
+{
+  "status": "COMPLETED",
+  "key": "change_calibration",
+  "version": "v2",
+  "created_at": "2026-11-01T21:47:38.237050+00:00",
+  "split": "validation (out of fold)",
+  "folds": [
+    "data/processed/runs/f0_date",
+    "data/processed/runs/f1_date",
+    "data/processed/runs/f2_date"
+  ],
+  "oscd_cities": [
+    "abudhabi",
+    "aguasclaras",
+    "beihai",
+    "beirut",
+    "bercy",
+    "bordeaux",
+    "cupertino",
+    "hongkong",
+    "mumbai",
+    "nantes",
+    "paris",
+    "pisa",
+    "rennes",
+    "saclay_e"
+  ],
+  "threshold_raw": 0.4750208125210601,
+  "threshold_calibrated": 0.47827455747013037,
+  "temperature": 1.1500000000000006,
+  "search_limits_raw": [
+    0.01,
+    0.995
+  ],
+  "threshold_at_search_limit": false,
+  "mean_source_f1": 0.3863541676387725,
+  "per_source": {
+    "oscd": {
+      "true_positive": 64116,
+      "false_positive": 230375,
+      "true_negative": 6128541,
+      "false_negative": 84849,
+      "pixels": 6507881,
+      "accuracy": 0.9515627283289292,
+      "precision": 0.21771802873432464,
+      "recall": 0.4304098278119021,
+      "f1": 0.28916510318949346,
+      "iou": 0.16901987662782728
+    },
+    "india_forest": {
+      "true_positive": 59397,
+      "false_positive": 67033,
+      "true_negative": 7155953,
+      "false_negative": 59847,
+      "pixels": 7342230,
+      "accuracy": 0.9827191466352866,
+      "precision": 0.4698014711698173,
+      "recall": 0.49811311260943947,
+      "f1": 0.4835432320880516,
+      "iou": 0.31886384255705214
+    }
+  },
+  "leave_one_fold_out": [
+    {
+      "fold": "f0_date",
+      "threshold_raw": 0.3775406687981454,
+      "own_best_threshold_raw": 0.7310585786300049,
+      "per_source": {
+        "oscd": {
+          "true_positive": 26915,
+          "false_positive": 76691,
+          "true_negative": 1523410,
+          "false_negative": 16897,
+          "pixels": 1643913,
+          "accuracy": 0.9430699799806924,
+          "precision": 0.2597822519931278,
+          "recall": 0.6143294074682736,
+          "f1": 0.3651521523830198,
+          "iou": 0.223355435134395
+        },
+        "india_forest": {
+          "true_positive": 22355,
+          "false_positive": 32436,
+          "true_negative": 2375226,
+          "false_negative": 17393,
+          "pixels": 2447410,
+          "accuracy": 0.9796401093400778,
+          "precision": 0.4080049643189575,
+          "recall": 0.5624182348797424,
+          "f1": 0.4729265170987635,
+          "iou": 0.30969466917876537
+        }
+      }
+    },
+    {
+      "fold": "f1_date",
+      "threshold_raw": 0.6681877721681659,
+      "own_best_threshold_raw": 0.2141650169574413,
+      "per_source": {
+        "oscd": {
+          "true_positive": 11329,
+          "false_positive": 6079,
+          "true_negative": 2114860,
+          "false_negative": 34965,
+          "pixels": 2167233,
+          "accuracy": 0.981061565600007,
+          "precision": 0.6507927389705882,
+          "recall": 0.24471853803948676,
+          "f1": 0.35568741954726696,
+          "iou": 0.21631374945105303
+        },
+        "india_forest": {
+          "true_positive": 14204,
+          "false_positive": 10096,
+          "true_negative": 2397566,
+          "false_negative": 25544,
+          "pixels": 2447410,
+          "accuracy": 0.9854376667579196,
+          "precision": 0.5845267489711934,
+          "recall": 0.35735131327362385,
+          "f1": 0.4435423432425681,
+          "iou": 0.2849691036032421
+        }
+      }
+    },
+    {
+      "fold": "f2_date",
+      "threshold_raw": 0.3893607660507782,
+      "own_best_threshold_raw": 0.5621765008857981,
+      "per_source": {
+        "oscd": {
+          "true_positive": 23921,
+          "false_positive": 166900,
+          "true_negative": 2470976,
+          "false_negative": 34938,
+          "pixels": 2696735,
+          "accuracy": 0.925154677786286,
+          "precision": 0.1253583201010371,
+          "recall": 0.40641193360403677,
+          "f1": 0.1916132649791733,
+          "iou": 0.10595812348566391
+        },
+        "india_forest": {
+          "true_positive": 22030,
+          "false_positive": 27522,
+          "true_negative": 2380140,
+          "false_negative": 17718,
+          "pixels": 2447410,
+          "accuracy": 0.9815151527533188,
+          "precision": 0.4445834678721343,
+          "recall": 0.5542417228539801,
+          "f1": 0.4933930571108623,
+          "iou": 0.32748624944254495
+        }
+      }
+    }
+  ],
+  "per_city": {
+    "aguasclaras": {
+      "fold": "f0_date",
+      "change_fraction": 0.016402790415529268,
+      "average_precision": 0.209126348125026,
+      "f1_at_raw_0.5": 0.25894897182025894,
+      "best_f1": 0.2619597492576707,
+      "best_threshold_raw": 0.6224593312018546
+    },
+    "paris": {
+      "fold": "f0_date",
+      "change_fraction": 0.0028783308195072903,
+      "average_precision": 0.10127492166431848,
+      "f1_at_raw_0.5": 0.07929515418502203,
+      "best_f1": 0.12492944496707434,
+      "best_threshold_raw": 0.09112296101485608
+    },
+    "abudhabi": {
+      "fold": "f0_date",
+      "change_fraction": 0.03761389635133088,
+      "average_precision": 0.2818964119174349,
+      "f1_at_raw_0.5": 0.35347395733230835,
+      "best_f1": 0.37226231761802103,
+      "best_threshold_raw": 0.8021838885585818
+    },
+    "hongkong": {
+      "fold": "f0_date",
+      "change_fraction": 0.03564881428190781,
+      "average_precision": 0.5793628752387537,
+      "f1_at_raw_0.5": 0.4880054473077729,
+      "best_f1": 0.5844341744713918,
+      "best_threshold_raw": 0.9046505351008906
+    },
+    "bordeaux": {
+      "fold": "f0_date",
+      "change_fraction": 0.009985860357393104,
+      "average_precision": 0.2750728670871059,
+      "f1_at_raw_0.5": 0.28116849243609804,
+      "best_f1": 0.329850324767015,
+      "best_threshold_raw": 0.06913842034334684
+    },
+    "bercy": {
+      "fold": "f1_date",
+      "change_fraction": 0.007355836849507736,
+      "average_precision": 0.2971706596973498,
+      "f1_at_raw_0.5": 0.2727957799547852,
+      "best_f1": 0.3455674760022586,
+      "best_threshold_raw": 0.2141650169574413
+    },
+    "rennes": {
+      "fold": "f1_date",
+      "change_fraction": 0.025841336707587356,
+      "average_precision": 0.5559941383404665,
+      "f1_at_raw_0.5": 0.38319734058627986,
+      "best_f1": 0.5371496958212826,
+      "best_threshold_raw": 0.04973651155855676
+    },
+    "cupertino": {
+      "fold": "f1_date",
+      "change_fraction": 0.0236828286364432,
+      "average_precision": 0.8111756735925739,
+      "f1_at_raw_0.5": 0.5928873067392594,
+      "best_f1": 0.7458152353374482,
+      "best_threshold_raw": 0.0997504891196852
+    },
+    "pisa": {
+      "fold": "f1_date",
+      "change_fraction": 0.016386439996554,
+      "average_precision": 0.3093311011567562,
+      "f1_at_raw_0.5": 0.36092483234911427,
+      "best_f1": 0.3721772108257197,
+      "best_threshold_raw": 0.35434369377420466
+    },
+    "mumbai": {
+      "fold": "f1_date",
+      "change_fraction": 0.025620101024050754,
+      "average_precision": 0.3352578116437032,
+      "f1_at_raw_0.5": 0.2359882005899705,
+      "best_f1": 0.3557397729320598,
+      "best_threshold_raw": 0.07585818002124355
+    },
+    "nantes": {
+      "fold": "f2_date",
+      "change_fraction": 0.011352714249976959,
+      "average_precision": 0.4889650042968981,
+      "f1_at_raw_0.5": 0.5200858632321375,
+      "best_f1": 0.5501411562538358,
+      "best_threshold_raw": 0.2141650169574413
+    },
+    "saclay_e": {
+      "fold": "f2_date",
+      "change_fraction": 0.009885540633984786,
+      "average_precision": 0.03986872164268716,
+      "f1_at_raw_0.5": 0.07774116237267825,
+      "best_f1": 0.08262271729022813,
+      "best_threshold_raw": 0.8455347349164652
+    },
+    "beihai": {
+      "fold": "f2_date",
+      "change_fraction": 0.024869891892512895,
+      "average_precision": 0.09421776641116521,
+      "f1_at_raw_0.5": 0.161672431208105,
+      "best_f1": 0.1641471485109972,
+      "best_threshold_raw": 0.7005671424739729
+    },
+    "beirut": {
+      "fold": "f2_date",
+      "change_fraction": 0.026863614763187074,
+      "average_precision": 0.6522510110539087,
+      "f1_at_raw_0.5": 0.41494547350760647,
+      "best_f1": 0.6075822460291318,
+      "best_threshold_raw": 0.026596993576865863
+    }
+  },
+  "final_model_forest_val": {
+    "india_forest": {
+      "f1_at_out_of_fold_threshold": 0.47311523391398763,
+      "recall_at_out_of_fold_threshold": 0.5042769447519372,
+      "precision_at_out_of_fold_threshold": 0.4455806508980971,
+      "own_best_f1": 0.47615608735712334,
+      "own_best_threshold_raw": 0.5498339973124777,
+      "average_precision": 0.47833839744921114
+    }
+  }
+}

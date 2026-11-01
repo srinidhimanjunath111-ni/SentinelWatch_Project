@@ -1,0 +1,61 @@
+{
+  "status": "COMPLETED",
+  "key": "change_selection",
+  "created_at": "2026-11-01T21:49:01.582561+00:00",
+  "selected": "v2",
+  "criteria": "Keep v2 only if OSCD test F1 does not fall more than 0.02 below v1 and India forest test F1 is higher than v1.",
+  "material_drop": 0.02,
+  "decision": "Selected v2. Against v1, v2 changed OSCD test F1 by +0.213 (0.248 to 0.461) and India forest test F1 by +0.415 (0.101 to 0.516). v1's OSCD test result was seen before v2 was designed, so v2 is not a fully blind result. v2's configuration, threshold and temperature were chosen on validation data only, and v2 was evaluated once on each test set. This comparison then uses test results to choose between the two models, which makes the winner's score slightly optimistic.",
+  "v1": {
+    "oscd_test": {
+      "true_positive": 23637,
+      "false_positive": 8279,
+      "true_negative": 2910580,
+      "false_negative": 135440,
+      "pixels": 3077936,
+      "accuracy": 0.9533066964355335,
+      "precision": 0.7406003258553704,
+      "recall": 0.14858841944467144,
+      "f1": 0.24751692470404674,
+      "iou": 0.14123784029255002
+    },
+    "india_forest_test": {
+      "true_positive": 5174,
+      "false_positive": 18724,
+      "true_negative": 4675012,
+      "false_negative": 73857,
+      "pixels": 4772767,
+      "accuracy": 0.9806022376537551,
+      "precision": 0.21650347309398277,
+      "recall": 0.06546798091887994,
+      "f1": 0.10053532046362056,
+      "iou": 0.05292823896475884
+    }
+  },
+  "v2": {
+    "oscd_test": {
+      "true_positive": 82390,
+      "false_positive": 116270,
+      "true_negative": 2795727,
+      "false_negative": 76550,
+      "pixels": 3070937,
+      "accuracy": 0.9372113462438337,
+      "precision": 0.41472868217054265,
+      "recall": 0.5183717125959482,
+      "f1": 0.46079418344519013,
+      "iou": 0.29937138912103484
+    },
+    "india_forest_test": {
+      "true_positive": 39320,
+      "false_positive": 34145,
+      "true_negative": 4654247,
+      "false_negative": 39700,
+      "pixels": 4767412,
+      "accuracy": 0.9845104639582231,
+      "precision": 0.5352208534676377,
+      "recall": 0.49759554543153633,
+      "f1": 0.5157228579860315,
+      "iou": 0.3474572526841338
+    }
+  }
+}

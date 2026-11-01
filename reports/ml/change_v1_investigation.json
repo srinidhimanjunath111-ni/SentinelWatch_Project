@@ -1,0 +1,488 @@
+{
+  "status": "COMPLETED",
+  "key": "change_investigation",
+  "created_at": "2026-11-01T20:20:00.597615+00:00",
+  "scope": "train and validation data only; the test split is not loaded",
+  "selection": {
+    "steps_run": 4000,
+    "early_stopping_fired": false,
+    "best_step": 400,
+    "val_f1_by_step": {
+      "200": 0.45375805069957803,
+      "400": 0.5223208371969797,
+      "600": 0.5198521683111246,
+      "800": 0.4777249279828499,
+      "1000": 0.41541472036359045,
+      "1200": 0.484296768320437,
+      "1400": 0.49529739038283216,
+      "1600": 0.5035442876301169,
+      "1800": 0.48844342987587386,
+      "2000": 0.43534385822875904,
+      "2200": 0.4935119296776894,
+      "2400": 0.4364711934156379,
+      "2600": 0.4580868400491126,
+      "2800": 0.41846168176419907,
+      "3000": 0.48839722805009855,
+      "3200": 0.4721499390625515,
+      "3400": 0.46831228817372006,
+      "3600": 0.45078328607841456,
+      "3800": 0.4528312850460502,
+      "4000": 0.4789687924016282
+    },
+    "val_f1_mean": 0.4706985451355622,
+    "val_f1_std": 0.029658294505871916,
+    "val_f1_step_to_step_mean_abs_change": 0.0338938688004654
+  },
+  "checkpoints": {
+    "best_step_400": {
+      "val": {
+        "average_precision": 0.5178448685859073,
+        "best_f1": 0.52765126870527,
+        "best_threshold": 0.9626731126558706,
+        "f1_at_0.5": 0.25925614624921206,
+        "recall_at_0.5": 0.782917697823466,
+        "precision_at_0.5": 0.15534934085443397,
+        "f1_at_0.95": 0.5226277372262773,
+        "recall_at_0.95": 0.4997779046893838,
+        "mean_probability_change": 0.7498708499236911,
+        "mean_probability_no_change": 0.1305556549822873
+      },
+      "train": {
+        "average_precision": 0.45864534314744393,
+        "best_f1": 0.48754642942727056,
+        "best_threshold": 0.8175744761936437,
+        "f1_at_0.5": 0.3973434635274435,
+        "recall_at_0.5": 0.733337830039496,
+        "precision_at_0.5": 0.2724943607452171,
+        "f1_at_0.95": 0.35917127959616785,
+        "recall_at_0.95": 0.24289707789044526,
+        "mean_probability_change": 0.6797694181473901,
+        "mean_probability_no_change": 0.07427802692859799
+      }
+    },
+    "last_step_4000": {
+      "val": {
+        "average_precision": 0.5290616223953309,
+        "best_f1": 0.5015637216575449,
+        "best_threshold": 0.9791636554813196,
+        "f1_at_0.5": 0.3984343827782106,
+        "recall_at_0.5": 0.6653340948029697,
+        "precision_at_0.5": 0.2843621175960078,
+        "f1_at_0.95": 0.4791538635702041,
+        "recall_at_0.95": 0.47001713306681897,
+        "mean_probability_change": 0.6613116907095316,
+        "mean_probability_no_change": 0.051525572224715356
+      },
+      "train": {
+        "average_precision": 0.7766727166169468,
+        "best_f1": 0.7062612484607369,
+        "best_threshold": 0.8099984339846868,
+        "f1_at_0.5": 0.678886003767629,
+        "recall_at_0.5": 0.7994543996522547,
+        "precision_at_0.5": 0.5899184294207106,
+        "f1_at_0.95": 0.6487891437599321,
+        "recall_at_0.95": 0.5247431256604537,
+        "mean_probability_change": 0.7762401236982969,
+        "mean_probability_no_change": 0.018843983331610088
+      }
+    }
+  },
+  "normalisation_signal_auc": {
+    "meaning": "Pixel AUC of the distance between normalised dates; higher keeps more change signal",
+    "oscd_by_city": {
+      "aguasclaras": {
+        "pooled": 0.6973119393384748,
+        "per_date": 0.7501680867997692
+      },
+      "bercy": {
+        "pooled": 0.7201953680304313,
+        "per_date": 0.7959595869837836
+      },
+      "nantes": {
+        "pooled": 0.884097863145698,
+        "per_date": 0.9180480395965577
+      },
+      "paris": {
+        "pooled": 0.944471932011798,
+        "per_date": 0.9551331662776695
+      },
+      "rennes": {
+        "pooled": 0.9108421843785173,
+        "per_date": 0.9596091537664694
+      },
+      "saclay_e": {
+        "pooled": 0.6522578448134324,
+        "per_date": 0.7331999342730247
+      },
+      "abudhabi": {
+        "pooled": 0.7225650022570533,
+        "per_date": 0.777648494452392
+      },
+      "cupertino": {
+        "pooled": 0.9563142898000677,
+        "per_date": 0.9571706681443976
+      },
+      "pisa": {
+        "pooled": 0.6681091285285032,
+        "per_date": 0.7426070128402725
+      },
+      "beihai": {
+        "pooled": 0.8042895697534184,
+        "per_date": 0.8850095861256393
+      },
+      "beirut": {
+        "pooled": 0.8319006133346485,
+        "per_date": 0.9020975016540257
+      },
+      "mumbai": {
+        "pooled": 0.8541568734207486,
+        "per_date": 0.8193441171654284
+      },
+      "hongkong": {
+        "pooled": 0.8001387472590769,
+        "per_date": 0.8165620920214501
+      },
+      "bordeaux": {
+        "pooled": 0.7773256507390269,
+        "per_date": 0.8214010365013451
+      }
+    },
+    "forest_train_mean": {
+      "pooled": 0.8502449716198748,
+      "per_date": 0.8907786787155815
+    },
+    "forest_val_mean": {
+      "pooled": 0.8518461813968236,
+      "per_date": 0.874360787800188
+    },
+    "oscd_mean": {
+      "pooled": 0.8017126433436353,
+      "per_date": 0.8452827483287304
+    }
+  },
+  "alignment": {
+    "aguasclaras": {
+      "date_offset_B04": [
+        0,
+        0
+      ],
+      "date_offset_B08": [
+        0,
+        0
+      ],
+      "date_offset_B11": [
+        0,
+        0
+      ],
+      "band_offset_B11_to_B08": [
+        0,
+        0
+      ],
+      "label_offset_maximising_difference": [
+        0,
+        0
+      ]
+    },
+    "bercy": {
+      "date_offset_B04": [
+        0,
+        -1
+      ],
+      "date_offset_B08": [
+        0,
+        0
+      ],
+      "date_offset_B11": [
+        -1,
+        -1
+      ],
+      "band_offset_B11_to_B08": [
+        -1,
+        0
+      ],
+      "label_offset_maximising_difference": [
+        1,
+        1
+      ]
+    },
+    "nantes": {
+      "date_offset_B04": [
+        0,
+        0
+      ],
+      "date_offset_B08": [
+        0,
+        0
+      ],
+      "date_offset_B11": [
+        0,
+        0
+      ],
+      "band_offset_B11_to_B08": [
+        0,
+        0
+      ],
+      "label_offset_maximising_difference": [
+        0,
+        0
+      ]
+    },
+    "paris": {
+      "date_offset_B04": [
+        0,
+        0
+      ],
+      "date_offset_B08": [
+        0,
+        0
+      ],
+      "date_offset_B11": [
+        0,
+        0
+      ],
+      "band_offset_B11_to_B08": [
+        0,
+        0
+      ],
+      "label_offset_maximising_difference": [
+        0,
+        0
+      ]
+    },
+    "rennes": {
+      "date_offset_B04": [
+        0,
+        0
+      ],
+      "date_offset_B08": [
+        0,
+        0
+      ],
+      "date_offset_B11": [
+        0,
+        0
+      ],
+      "band_offset_B11_to_B08": [
+        0,
+        0
+      ],
+      "label_offset_maximising_difference": [
+        0,
+        0
+      ]
+    },
+    "saclay_e": {
+      "date_offset_B04": [
+        3,
+        3
+      ],
+      "date_offset_B08": [
+        3,
+        3
+      ],
+      "date_offset_B11": [
+        3,
+        3
+      ],
+      "band_offset_B11_to_B08": [
+        0,
+        0
+      ],
+      "label_offset_maximising_difference": [
+        -2,
+        -3
+      ]
+    },
+    "abudhabi": {
+      "date_offset_B04": [
+        1,
+        1
+      ],
+      "date_offset_B08": [
+        1,
+        1
+      ],
+      "date_offset_B11": [
+        0,
+        2
+      ],
+      "band_offset_B11_to_B08": [
+        0,
+        0
+      ],
+      "label_offset_maximising_difference": [
+        -1,
+        -1
+      ]
+    },
+    "cupertino": {
+      "date_offset_B04": [
+        0,
+        0
+      ],
+      "date_offset_B08": [
+        0,
+        0
+      ],
+      "date_offset_B11": [
+        0,
+        0
+      ],
+      "band_offset_B11_to_B08": [
+        0,
+        0
+      ],
+      "label_offset_maximising_difference": [
+        0,
+        0
+      ]
+    },
+    "pisa": {
+      "date_offset_B04": [
+        1,
+        0
+      ],
+      "date_offset_B08": [
+        1,
+        0
+      ],
+      "date_offset_B11": [
+        1,
+        0
+      ],
+      "band_offset_B11_to_B08": [
+        0,
+        0
+      ],
+      "label_offset_maximising_difference": [
+        0,
+        0
+      ]
+    },
+    "beihai": {
+      "date_offset_B04": [
+        -1,
+        -1
+      ],
+      "date_offset_B08": [
+        -1,
+        -1
+      ],
+      "date_offset_B11": [
+        -1,
+        -1
+      ],
+      "band_offset_B11_to_B08": [
+        -1,
+        -1
+      ],
+      "label_offset_maximising_difference": [
+        0,
+        0
+      ]
+    },
+    "beirut": {
+      "date_offset_B04": [
+        0,
+        1
+      ],
+      "date_offset_B08": [
+        0,
+        1
+      ],
+      "date_offset_B11": [
+        0,
+        1
+      ],
+      "band_offset_B11_to_B08": [
+        0,
+        0
+      ],
+      "label_offset_maximising_difference": [
+        0,
+        0
+      ]
+    },
+    "mumbai": {
+      "date_offset_B04": [
+        0,
+        0
+      ],
+      "date_offset_B08": [
+        0,
+        0
+      ],
+      "date_offset_B11": [
+        0,
+        0
+      ],
+      "band_offset_B11_to_B08": [
+        0,
+        0
+      ],
+      "label_offset_maximising_difference": [
+        0,
+        0
+      ]
+    },
+    "hongkong": {
+      "date_offset_B04": [
+        1,
+        1
+      ],
+      "date_offset_B08": [
+        1,
+        1
+      ],
+      "date_offset_B11": [
+        2,
+        1
+      ],
+      "band_offset_B11_to_B08": [
+        -1,
+        0
+      ],
+      "label_offset_maximising_difference": [
+        -1,
+        -1
+      ]
+    },
+    "bordeaux": {
+      "date_offset_B04": [
+        0,
+        -1
+      ],
+      "date_offset_B08": [
+        0,
+        -1
+      ],
+      "date_offset_B11": [
+        0,
+        -1
+      ],
+      "band_offset_B11_to_B08": [
+        0,
+        -1
+      ],
+      "label_offset_maximising_difference": [
+        0,
+        0
+      ]
+    }
+  },
+  "sliding_window": {
+    "hongkong": {
+      "logit_correlation_with_whole_image": 0.9983027679901665,
+      "mean_absolute_probability_difference": 0.002151797991245985
+    },
+    "bordeaux": {
+      "logit_correlation_with_whole_image": 0.9935045435349555,
+      "mean_absolute_probability_difference": 0.0009594199364073575
+    }
+  },
+  "crop_sampling": {
+    "base_rate": 0.02260032747617227,
+    "enriched_batches_change_fraction": 0.06779963055968916,
+    "v1_batches_change_fraction_measured_before_fix": 0.038
+  }
+}

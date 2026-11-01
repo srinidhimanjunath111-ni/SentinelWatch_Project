@@ -25,7 +25,12 @@ from app.ml.inference import (  # noqa: E402
     get_landcover_classifier,
 )
 from app.ml.landcover_unet import LandCoverUNet  # noqa: E402
-from app.ml.preprocessing import NORMALISE_PER_DATE, normalise_pair  # noqa: E402
+from app.ml.preprocessing import (  # noqa: E402
+    NORMALISE_PER_DATE,
+    apply_date_shift,
+    estimate_date_shift,
+    normalise_pair,
+)
 from app.ml.siamese_unet import SiameseUNet  # noqa: E402
 from data_tools.fetch_oscd import _safe_member_path  # noqa: E402
 from data_tools.s2_stac import reflectance_offset, resolve_ambiguous_offset  # noqa: E402
@@ -297,6 +302,28 @@ def test_unknown_normalisation_is_refused(tmp_path):
         path,
     )
     assert ChangeDetector(path).available is False
+
+
+def test_date_shift_recovers_a_known_offset():
+    # A smooth random field, because estimate_date_shift needs structure to correlate on.
+    rng = np.random.default_rng(3)
+    field = rng.random((6, 200, 200), dtype=np.float32)
+    for _ in range(2):
+        field = (field + np.roll(field, 1, -1) + np.roll(field, 1, -2)) / 3
+    moved = np.roll(field, (-2, 3), axis=(-2, -1))
+    valid = np.ones((200, 200), dtype=bool)
+    assert estimate_date_shift(field, moved, valid) == (2, -3)
+    assert estimate_date_shift(field, field, valid) == (0, 0)
+
+
+def test_date_shift_invalidates_uncovered_edges():
+    stack, valid = np.ones((6, 10, 10), dtype=np.float32), np.ones((10, 10), dtype=bool)
+    _, moved_valid = apply_date_shift(stack, valid, (2, -1))
+    assert not moved_valid[:2].any() and not moved_valid[:, -1].any() and moved_valid[2:, :-1].all()
+
+
+def test_small_aoi_is_never_shifted():
+    assert estimate_date_shift(_scene(20, 20), _scene(20, 20, 1), np.ones((20, 20), dtype=bool)) == (0, 0)
 
 
 def test_zip_traversal_is_rejected(tmp_path):

@@ -23,6 +23,8 @@ from app.ml.preprocessing import (
     BAND_ORDER,
     NORMALISATION_MODES,
     NORMALISE_POOLED,
+    apply_date_shift,
+    estimate_date_shift,
     finite_valid,
     normalise_pair,
     normalise_scene,
@@ -179,6 +181,8 @@ class ChangeDetector:
         self.device = "cpu"
         self.threshold = 0.5
         self.normalisation = NORMALISE_POOLED
+        self.temperature = 1.0
+        self.align_dates = False
         self.version: str | None = None
         self.unavailable_reason: str | None = None
         self._model = None
@@ -210,6 +214,8 @@ class ChangeDetector:
                 raise ValueError(f"Unknown normalisation {normalisation!r}")
             self.normalisation = normalisation
             self.threshold = float(payload["threshold"])
+            self.temperature = float(payload.get("temperature", 1.0))
+            self.align_dates = bool(payload.get("align_dates", False))
             self.version = str(payload.get("version", "unknown"))
             self.device = device
             self._model = model
@@ -236,19 +242,24 @@ class ChangeDetector:
         mask = finite_valid(valid, before, after)
         if not mask.any():
             return np.zeros(before.shape[1:], dtype=np.float32)
-        norm_before, norm_after = normalise_pair(
-            np.nan_to_num(before.astype(np.float32)),
-            np.nan_to_num(after.astype(np.float32)),
-            mask,
-            self.normalisation,
-        )
+        clean_before = np.nan_to_num(before.astype(np.float32))
+        clean_after = np.nan_to_num(after.astype(np.float32))
+        if self.align_dates:
+            # Output stays on the before grid. Edge pixels the shift uncovers report no change.
+            clean_after, mask = apply_date_shift(
+                clean_after, mask, estimate_date_shift(clean_before, clean_after, mask)
+            )
+        norm_before, norm_after = normalise_pair(clean_before, clean_after, mask, self.normalisation)
         # MPS and BatchNorm eval are read-only but not documented as thread-safe; one forward at a
         # time keeps concurrent scheduler workers from contending for the same device memory.
         with self._lock:
             logits = sliding_window_logits(
                 self._model, (norm_before, norm_after), 1, device=self.device
             )[0]
-        probability = torch.sigmoid(torch.from_numpy(logits)).numpy().astype(np.float32)
+        # The temperature, fitted on validation data, makes the probability mean what it says.
+        probability = (
+            torch.sigmoid(torch.from_numpy(logits) / self.temperature).numpy().astype(np.float32)
+        )
         probability = np.clip(probability, 0.0, 1.0)
         probability[~mask] = 0.0
         return probability

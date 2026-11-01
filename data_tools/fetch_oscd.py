@@ -12,6 +12,8 @@ arrays use uint16 digital numbers (reflectance x 10000) and are stored with allo
 
 The official split comes from train.txt/test.txt in the archive. Two official *train* cities
 are held out for validation (`VALIDATION_CITIES`); the choice was fixed before any training.
+Change model v2 replaces that with 3-fold validation over all 14 official train cities, because two
+cities proved too few to select on. See training/calibrate.py. The test cities are never involved.
 """
 
 from __future__ import annotations

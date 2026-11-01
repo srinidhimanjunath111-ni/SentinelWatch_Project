@@ -34,7 +34,7 @@ from app.ml.preprocessing import NORMALISE_POOLED, normalise_scene
 from app.ml.siamese_unet import SiameseUNet
 from data_tools.fetch_oscd import IGNORE, ChangeRecord
 from training import reporting
-from training.dataset import to_reflectance
+from training.dataset import mean_pixels_per_step, to_reflectance
 from training.metrics import binary_metrics, multiclass_metrics
 from training.train import load_change_records, predict_record
 
@@ -80,6 +80,8 @@ def evaluate_change(args: argparse.Namespace) -> None:
     device = args.device or select_device()
     model, payload = load_change_model(args.checkpoint, device)
     threshold = float(payload["threshold"])
+    temperature = float(payload.get("temperature", 1.0))
+    align_dates = bool(payload.get("align_dates", False))
     normalisation = str(payload.get("normalisation", NORMALISE_POOLED))
     records: list[ChangeRecord] = load_change_records([args.dataset], "test")
     pooled = [0, 0, 0, 0]
@@ -87,7 +89,8 @@ def evaluate_change(args: argparse.Namespace) -> None:
     sample_rows = []
     started = perf_counter()
     for record in records:
-        probability, valid = predict_record(model, record, device, normalisation)
+        logits, valid = predict_record(model, record, device, normalisation, align_dates=align_dates)
+        probability = torch.sigmoid(torch.from_numpy(logits) / temperature).numpy()
         prediction = probability >= threshold
         truth = record.mask == 1
         shown_truth = np.where(valid, record.mask, IGNORE)
@@ -120,7 +123,12 @@ def evaluate_change(args: argparse.Namespace) -> None:
         "checkpoint_sha256": sha,
         "version": str(payload.get("version")),
         "threshold": threshold,
-        "threshold_source": "tuned on validation data only and stored in the checkpoint",
+        "temperature": temperature,
+        "align_dates": align_dates,
+        "normalisation": normalisation,
+        "threshold_source": str(
+            payload.get("threshold_source", "tuned on validation data only and stored in the checkpoint")
+        ),
         "samples": len(records),
         "device": device,
         "elapsed_seconds": perf_counter() - started,
@@ -151,15 +159,16 @@ def evaluate_change(args: argparse.Namespace) -> None:
 def export_change(args: argparse.Namespace) -> None:
     summary = json.loads((args.run_dir / "summary.json").read_text(encoding="utf-8"))
     history = json.loads((args.run_dir / "history.json").read_text(encoding="utf-8"))
-    train = load_change_records(summary["datasets"], "train")
-    summary["train_pixels"] = int(sum(r.mask.size for r in train))
-    # Mean pixels per step for the crop sizes and batch-size rule in ChangeSampler.batch.
-    per_size = [max(4, min(summary["batch_size"], int(summary["batch_size"] * (192 / s) ** 2))) * s * s for s in summary["crop_sizes"]]
-    pixels_per_step = float(np.mean(per_size))
+    if "train_pixels" not in summary:
+        train = load_change_records(summary["datasets"], "train")
+        summary["train_pixels"] = int(sum(r.mask.size for r in train))
+    pixels_per_step = mean_pixels_per_step(summary["batch_size"])
     summary["pixels_per_step"] = pixels_per_step
     summary["epochs_equivalent"] = round(summary["best_step"] * pixels_per_step / summary["train_pixels"])
     summary["status"] = "COMPLETED"
     summary["history"] = history
+    if args.version:
+        summary["version"] = args.version
     args.report.parent.mkdir(parents=True, exist_ok=True)
     args.report.write_text(json.dumps(summary, indent=2), encoding="utf-8")
     reporting.learning_curve(
@@ -257,14 +266,16 @@ def evaluate_landcover(args: argparse.Namespace) -> None:
 
 
 def timing(args: argparse.Namespace) -> None:
-    """Measure real CPU inference time and peak memory on a real 500 x 500 AOI cut from OSCD."""
+    """Measure real CPU inference time and peak memory on a real 500 x 500 AOI from OSCD validation."""
 
     import resource
 
     from app.ml.inference import ChangeDetector, LandCoverClassifier
 
     os.environ["SENTINELWATCH_ML_DEVICE"] = "cpu"
-    record = next(r for r in load_change_records(["oscd"], "test") if min(r.mask.shape) >= 500)
+    # Before the models load, so the peak describes inference rather than dataset loading.
+    baseline = resource.getrusage(resource.RUSAGE_SELF).ru_maxrss
+    record = next(r for r in load_change_records(["oscd"], "val") if min(r.mask.shape) >= 500)
     before = to_reflectance(record.before[:, :500, :500])
     after = to_reflectance(record.after[:, :500, :500])
     valid = np.ones((500, 500), dtype=bool)
@@ -298,7 +309,9 @@ def timing(args: argparse.Namespace) -> None:
         output["landcover_seconds_runs"] = runs
     # ru_maxrss is bytes on macOS and kilobytes on Linux.
     peak = resource.getrusage(resource.RUSAGE_SELF).ru_maxrss
-    output["peak_rss_mb"] = peak / (1024**2 if platform.system() == "Darwin" else 1024)
+    divisor = 1024**2 if platform.system() == "Darwin" else 1024
+    output["peak_rss_mb"] = peak / divisor
+    output["rss_mb_before_models"] = baseline / divisor
     args.report.parent.mkdir(parents=True, exist_ok=True)
     args.report.write_text(json.dumps(output, indent=2), encoding="utf-8")
     print(json.dumps(output, indent=2))
@@ -317,6 +330,7 @@ def parse_args() -> argparse.Namespace:
     export = commands.add_parser("export-change")
     export.add_argument("--run-dir", type=Path, required=True)
     export.add_argument("--report", type=Path, required=True)
+    export.add_argument("--version", default=None, help="Version name, if the run dir used another")
     export.set_defaults(handler=export_change)
     landcover = commands.add_parser("landcover")
     landcover.add_argument("--checkpoint", type=Path, required=True)

@@ -44,11 +44,16 @@ CHANGE_LIMITATIONS = [
     "OSCD imagery is Sentinel-2 L1C while live imagery is L2A. Per-pair per-band normalisation reduces this shift but does not remove it, and no OSCD-style pixel labels exist on L2A to measure the residual.",
     "OSCD has 24 pairs. The test set is 10 cities and validation is only 2, so metrics and the tuned threshold carry real sampling uncertainty.",
     "The model reports physical change only. It cannot determine cause or legality.",
+    "Performance varies widely between places. On validation cities the best threshold differed by city, so one global threshold over-calls in some scenes and under-calls in others.",
 ]
 FOREST_LIMITATIONS = [
     "India forest labels come from Hansen Global Forest Change at 30 m and are annual, so they are coarse relative to 10 m pixels, and the loss edge is uncertain by several pixels.",
     "Hansen records loss of tree cover only. Pixels outside forest (treecover2000 under 30) are ignored, so India forest metrics say nothing about false alarms on non-forest land.",
 ]
+V2_LIMITATION = (
+    "Per-date normalisation cancels scene-wide radiometric shifts, so a change covering most of an "
+    "AOI, such as a flood filling the whole window, can be suppressed. Use a wide AOI for such events."
+)
 LANDCOVER_LIMITATIONS = [
     "Reference labels are ESA WorldCover 2021, itself a model output with its own errors (around 75 percent reported global accuracy), so scores measure agreement with WorldCover rather than ground truth.",
     "The mine class comes from Maus et al. 2022 polygons digitised on a 2019 mosaic. They include tailings, ponds and plant, and omit mines opened or unmapped since, so unmapped mines are labelled as other classes during training and scoring.",
@@ -98,6 +103,10 @@ def change_entry(reports: list[dict]) -> dict | None:
         None,
     )
     selection = next((r for r in reports if r.get("key") == "change_selection"), None)
+    calibration = next(
+        (r for r in reports if r.get("key") == "change_calibration" and r.get("version") == version),
+        None,
+    )
     primary = installed.get("oscd_test")
     per_dataset = {name: _binary_summary(r["metrics"]) for name, r in installed.items()}
     # Every candidate on the same test data, so a v1 versus v2 comparison stays visible.
@@ -109,12 +118,16 @@ def change_entry(reports: list[dict]) -> dict | None:
             datasets.append({**SOURCE_FACTS[source], "role": "train", "samples": count})
         for source, count in training["val_samples"].items():
             datasets.append({**SOURCE_FACTS[source], "role": "val", "samples": count})
+    if calibration:
+        datasets.append({**SOURCE_FACTS["oscd"], "role": "val", "samples": len(calibration["oscd_cities"])})
     for name, report in installed.items():
         source = name.removesuffix("_test")
         datasets.append({**SOURCE_FACTS[source], "role": "test", "samples": report["samples"]})
     limitations = list(CHANGE_LIMITATIONS)
     if training and "india_forest" in training["datasets"] or "india_forest_test" in installed:
         limitations += FOREST_LIMITATIONS
+    if version != "v1":
+        limitations.append(V2_LIMITATION)
     if selection:
         limitations.append(selection["decision"])
     prefix = primary["_path"].with_suffix("") if primary else None
@@ -135,6 +148,8 @@ def change_entry(reports: list[dict]) -> dict | None:
         "checkpoint_bytes": checkpoint.stat().st_size,
         "input_bands": BANDS,
         "normalisation": str(payload["normalisation"]),
+        "align_dates": bool(payload.get("align_dates", False)),
+        "temperature": float(payload.get("temperature", 1.0)),
         "trained_at": str(payload["trained_at"]),
         "device": str(payload["device"]),
         "epochs": training["epochs_equivalent"] if training else 0,
