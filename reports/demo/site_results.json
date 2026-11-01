@@ -1,5 +1,5 @@
 {
-  "generated_at": "2026-11-01T23:29:39.057694Z",
+  "generated_at": "2026-11-01T23:30:19.138206Z",
   "model_version": "v2",
   "model_threshold": 0.47827455747013037,
   "measurement_notes": [
@@ -895,5 +895,78 @@
         "siamese-unet+spectral | landcover-unet"
       ]
     }
+  },
+  "restore_proof": {
+    "source_commit": "0621e70e2b7549e62e29ba97d9c11cb4a0acbd83",
+    "fresh_venv": true,
+    "restored_from_empty_database": true,
+    "initial_counts": {
+      "areas": 7,
+      "active_areas": 7,
+      "critical_alerts": 4,
+      "cases": 14,
+      "scenes_analysed": 14,
+      "changed_area_m2": 21932200.0,
+      "open_alerts": 20,
+      "open_alerts_live": 3,
+      "open_alerts_replay": 17,
+      "alerts_24h": 20,
+      "alerts_24h_live": 3,
+      "alerts_24h_replay": 17,
+      "dispatches_sent": 20,
+      "emails_sent": 0,
+      "outbox_saved": 15
+    },
+    "evidence_images_http_ok": 565,
+    "evidence_images_total": 565,
+    "pdf_valid": true,
+    "pdf_bytes": 667219,
+    "pdfinfo": [
+      "Pages:           5",
+      "File size:       667219 bytes",
+      "PDF version:     1.4"
+    ],
+    "scheduler_enabled": true,
+    "scheduler_runs_by_status": {
+      "NO_NEW_ACQUISITION": 1,
+      "NO_SUITABLE_ACQUISITION": 6
+    },
+    "new_replay_statuses": [
+      "REPLAY_BASELINE",
+      "COMPLETED"
+    ],
+    "new_live_status": "NO_SUITABLE_ACQUISITION",
+    "replay_badges_preserved": true,
+    "next_check_deadlines_current": true,
+    "temporary_clone_deleted": true
+  },
+  "offline_proof": {
+    "test_process_pid": 41389,
+    "network_block_method": "Only test server provider URLs pointed to an unroutable address; system networking unchanged.",
+    "images_http_ok": 7,
+    "pdf_valid": true,
+    "cached_replay_statuses": [
+      "REPLAY_BASELINE",
+      "COMPLETED"
+    ],
+    "cached_replay_seconds": 10.093,
+    "live_outage_status": "FAILED",
+    "live_outage_message": "Imagery providers unreachable; will retry at the next check.",
+    "live_outage_seconds": 2.029,
+    "test_budget_seconds": 2,
+    "production_budget_seconds": 120,
+    "backoff_before_recovery": {
+      "until": "2026-11-01T23:34:56Z",
+      "failures": 1
+    },
+    "same_process_recovery_status": "NO_SUITABLE_ACQUISITION",
+    "same_process_recovery_seconds": 2.272,
+    "backoff_cleared": true
+  },
+  "soak": {
+    "status": "running",
+    "planned_minutes": 45,
+    "pid": 41320,
+    "sample_interval_seconds": 60
   }
 }
