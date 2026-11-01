@@ -112,7 +112,9 @@ export async function mountIncident(root, params) {
 
   async function loadAlerts() {
     const alerts = asList(detail.alerts);
-    const loaded = await Promise.all(alerts.map((alert) => api.alert(alert.id).catch(() => alert)));
+    // Repeat detections may link to an alert created in an earlier incident.
+    const ids = new Set([...alerts.map((alert) => alert.id), ...asList(detail.findings).map((finding) => finding.alert_id).filter(Boolean)]);
+    const loaded = (await Promise.all([...ids].map((id) => api.alert(id).catch(() => alerts.find((alert) => alert.id === id))))).filter(Boolean);
     alertDetails = new Map(loaded.map((alert) => [alert.id, alert]));
     // Region membership comes from the grouped alert; reasons and geometry come from its finding.
     const findings = new Map(asList(detail.findings).map((finding) => [finding.id, finding]));

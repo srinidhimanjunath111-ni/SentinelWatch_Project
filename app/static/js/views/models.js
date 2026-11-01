@@ -119,14 +119,7 @@ function datasetKeyLabel(name) {
 }
 
 function perDatasetTable(perDataset) {
-  // The registry can repeat one evaluation under two keys; identical results are one row.
-  const seen = new Set();
-  const rows = Object.entries(perDataset || {}).filter(([, values]) => {
-    const sig = JSON.stringify(values);
-    if (seen.has(sig)) return false;
-    seen.add(sig);
-    return true;
-  });
+  const rows = Object.entries(perDataset || {});
   if (!rows.length) return null;
   const keys = [...new Set(rows.flatMap(([, values]) => Object.keys(values || {})))].filter((key) => ["f1", "iou", "precision", "recall", "accuracy"].includes(key));
   return h("div",

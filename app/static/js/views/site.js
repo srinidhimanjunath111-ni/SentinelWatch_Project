@@ -149,8 +149,9 @@ export async function mountSite(root, params) {
   }
 
   function duration(seconds) {
-    const hours = Math.floor(seconds / 3600);
-    const minutes = Math.round((seconds % 3600) / 60);
+    const totalMinutes = Math.max(1, Math.round(seconds / 60));
+    const hours = Math.floor(totalMinutes / 60);
+    const minutes = totalMinutes % 60;
     if (hours >= 24) return `${Math.floor(hours / 24)} d ${hours % 24} h`;
     if (hours > 0) return `${hours} h ${minutes} min`;
     return `${Math.max(1, minutes)} min`;
