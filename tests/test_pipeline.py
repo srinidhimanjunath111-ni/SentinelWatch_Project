@@ -136,6 +136,37 @@ def test_model_probability_is_labelled_when_a_detector_runs(monkeypatch):
     assert case.model_version_label == "v-test"
 
 
+def test_pipeline_accepts_classifier_nodata_with_zero_probabilities(monkeypatch):
+    from app.ml.inference import LANDCOVER_NODATA
+
+    class NoDataLandCover:
+        available = True
+
+        def predict(self, scene, valid):
+            return (
+                np.full(valid.shape, LANDCOVER_NODATA, dtype=np.uint8),
+                np.zeros((8, *valid.shape), dtype=np.float32),
+            )
+
+    monkeypatch.setattr("app.services.monitoring.get_landcover_classifier", NoDataLandCover)
+    class SuppressedDetector:
+        available, threshold, version = True, 0.47827455747013037, "v2-test"
+
+        def predict(self, before, after, valid):
+            return np.zeros(valid.shape, dtype=np.float32)
+
+    monkeypatch.setattr("app.services.monitoring.get_change_detector", SuppressedDetector)
+    rainy = quiet_context(rainfall={"available": True, "total_mm": 220.0})
+    monkeypatch.setattr("app.services.monitoring.fetch_case_context", lambda *a, **k: (rainy, NO_LATE_CONTEXT))
+    install({AFTER: Scene(WATER), BEFORE: Scene(FOREST)})
+    run = _run(make_area())
+    assert run.status == "COMPLETED", run.message
+    findings = _rows(Finding)
+    assert findings and all(f.transition_from is None and f.transition_to is None for f in findings)
+    assert _rows(Case)[0].analysis_method.endswith("landcover-unet")
+    assert [(a.category, a.verdict) for a in _rows(Alert)] == [("FLOOD", "NATURAL_EVENT")]
+
+
 def test_model_failure_degrades_to_labelled_spectral(monkeypatch):
     class Broken:
         available, threshold = True, 0.5

@@ -307,6 +307,9 @@ def build_change_map(
             0.5 + 0.5 * (probability - model_threshold) / max(1.0 - model_threshold, 1e-3),
         ).astype(np.float32)
         fused = MODEL_WEIGHT * rescaled + (1.0 - MODEL_WEIGHT) * spectral
+        # Independent spectral detections must also carry their evidence strength into
+        # the review score; otherwise a low model result admits the mask but vetoes its alert.
+        fused = np.where(spectral >= STRONG_SPECTRAL, np.maximum(fused, spectral), fused)
         fused[~valid] = 0.0
         raw_mask = (
             ((fused >= MASK_THRESHOLD) & (spectral >= MIN_SPECTRAL_SUPPORT))

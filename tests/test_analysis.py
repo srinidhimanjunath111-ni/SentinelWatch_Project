@@ -98,6 +98,7 @@ def test_whole_window_flood_survives_zero_v2_probability_and_baseline_correction
     )
     assert change_map.spectral.min() >= 0.75
     assert change_map.mask.mean() > 0.95
+    assert change_map.fused[change_map.mask].min() >= 0.75
     assessment = assess_region(
         change_map.mask, change_map=change_map, before_indices=indices_before,
         after_indices=indices_after, after=after,
@@ -108,6 +109,7 @@ def test_whole_window_flood_survives_zero_v2_probability_and_baseline_correction
         pixel_area_m2=100.0,
     )
     assert (assessment.category, assessment.verdict) == ("FLOOD", "NATURAL_EVENT")
+    assert assessment.confidence >= 0.62
 
 
 def test_a_small_haze_shift_across_the_window_is_not_change():
