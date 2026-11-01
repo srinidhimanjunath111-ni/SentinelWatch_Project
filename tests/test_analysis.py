@@ -593,3 +593,24 @@ def test_isolated_spectral_outlier_does_not_trigger_scene_wide_score_override():
     )
     assert change_map.mask.any()
     assert change_map.fused.max() <= 0.4
+
+
+def test_scene_wide_index_shift_without_a_specific_cause_does_not_gain_alert_weight():
+    before = _scene(FOREST)
+    after = _scene((0.14, 0.18, 0.16, 0.30, 0.50, 0.40))
+    indices_before, indices_after = compute_indices(before), compute_indices(after)
+    change_map = build_change_map(
+        before, after, indices_before, indices_after, VALID,
+        probability=np.zeros(SHAPE, dtype=np.float32), min_pixels=4,
+    )
+    assert change_map.scene_wide_spectral
+    assessment = assess_region(
+        change_map.mask, change_map=change_map, before_indices=indices_before,
+        after_indices=indices_after, after=after,
+        before_classes=np.full(SHAPE, TREE, dtype=np.uint8),
+        after_classes=np.full(SHAPE, TREE, dtype=np.uint8),
+        reference_indices=None, reference_valid=None, context=AssessmentContext(),
+        pixel_area_m2=100.0,
+    )
+    assert assessment.category == "OTHER_CHANGE"
+    assert assessment.confidence < 0.62

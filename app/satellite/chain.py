@@ -235,9 +235,7 @@ class ProviderChain:
         cached = _read_cached(path, grid)
         if cached is not None:
             return cached[0].astype(np.uint8)
-        scl = self._read_with_failover(
-            scene, grid, "SCL"
-        )
+        scl = self._read_with_failover(scene, grid, "SCL")
         if scl.shape != grid.shape or not np.isfinite(scl).all() or not np.isin(scl, range(12)).all():
             raise ProviderError("Provider returned an invalid SCL window; nothing was cached.")
         _write_cached(path, scl[np.newaxis].astype(np.uint8), grid)
@@ -248,11 +246,11 @@ class ProviderChain:
         cached = _read_cached(path, grid)
         if cached is not None:
             return (cached.astype(np.float32) / _REFLECTANCE_SCALE).astype(np.float32)
-        bands = self._read_with_failover(
-            scene, grid, "bands"
-        )
-        if (bands.shape != (6, *grid.shape) or not np.isfinite(bands).all()
-                or (bands < 0).any() or (bands > 1).any()):
+        bands = self._read_with_failover(scene, grid, "bands")
+        if (
+            bands.shape != (6, *grid.shape) or not np.isfinite(bands).all()
+            or (bands < 0).any() or (bands > 1).any()
+        ):
             raise ProviderError("Provider returned an invalid reflectance window; nothing was cached.")
         encoded = np.clip(np.rint(bands * _REFLECTANCE_SCALE), 0, 65535).astype(np.uint16)
         _write_cached(path, encoded, grid)
