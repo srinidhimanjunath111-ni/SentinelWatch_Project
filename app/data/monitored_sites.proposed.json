@@ -97,5 +97,39 @@
       "end_date": "2025-03-25",
       "note": "AUTHORISED_ACTIVITY expected from inspected pair; Authorised is a registry match, not a legal conclusion. The zone is a conservative illustrative mine footprint, not the lease or full Phase-II forest-diversion boundary. Its valid_from is the documented state permission of 25 March 2022, so early replay scenes before that date are not covered by this entry."
     }
+  },
+  {
+    "name": "Rawa–Nangal border ridge quarries",
+    "state": "Haryana / Rajasthan",
+    "district": "Nuh / Deeg",
+    "site_type": "mining",
+    "categories": [
+      "MINING",
+      "DEFORESTATION",
+      "OTHER_CHANGE"
+    ],
+    "description": "Quarrying on the Rawa–Nangal border ridge. Public NGT filings discuss reported unauthorised workings and nearby Rajasthan leases. No authorisation on record in this system's registry; this is not evidence that every quarry lacks a permit.",
+    "bbox": [
+      77.01,
+      27.775,
+      77.065,
+      27.825
+    ],
+    "interval": 1440,
+    "sources": [
+      {
+        "title": "Rajasthan respondent reply in NGT OA 06/2025, incident-site coordinates",
+        "url": "https://www.greentribunal.gov.in/sites/default/files/news_updates/Short%20Reply%20on%20behalf%20of%20R-%206%20in%20OA%20No%2006%20of%202025%20%28In%20re%20News%20item%20appearing%20in%20The%20Tribune%20dated%2012.12.2024%20titled%20Mining%20Mafia%20brings%20down%20another%20Aravalli%29.pdf"
+      },
+      {
+        "title": "Haryana respondent reply in NGT OA 06/2025",
+        "url": "https://www.greentribunal.gov.in/sites/default/files/news_updates/Reply%20by%20R-1%20in%20OA%20No.%2006%20of%202025%20%28In%20re%20News%20item%20appearing%20in%20The%20Tribune%20dated%2012.12.2024%20titled%20Mining%20Mafia%20brings%20down%20another%20Aravalli%29.pdf"
+      }
+    ],
+    "replay": {
+      "start_date": "2021-03-05",
+      "end_date": "2025-03-24",
+      "note": "SUSPECTED_UNAUTHORISED expected from inspected pair; The bbox crosses a state boundary; imagery alone cannot place individual cuts in a state or lease. The reported encroachment is too small to attribute reliably at 10 m. Nearby Rajasthan permits are explicitly documented. Never describe all visible quarrying as unauthorised. A cross-tile 2021 candidate had visibly different alignment and was rejected; only 43RGL is used for the pair."
+    }
   }
 ]

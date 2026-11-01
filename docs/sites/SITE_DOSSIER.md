@@ -19,6 +19,7 @@ Coordinates were refined from the inspected imagery; they are monitoring AOIs, n
 | Noida International Airport, Jewar | AUTHORISED_ACTIVITY | 2021-03-20 → 2025-03-24 | 153 | 7 / 7 |
 | Navi Mumbai International Airport, Ulwe | AUTHORISED_ACTIVITY | 2021-01-27 → 2025-01-06 | 141 | 6 / 6 |
 | Parsa East Kete Basan mine, Hasdeo Arand | AUTHORISED_ACTIVITY | 2021-02-24 → 2025-03-25 | 148 | 5 / 7 |
+| Rawa–Nangal border ridge quarries | SUSPECTED_UNAUTHORISED | 2021-03-05 → 2025-03-24 | 158 | 9 / 10 |
 
 ### Noida International Airport, Jewar
 
@@ -94,6 +95,31 @@ Both dates show the characteristic curved, terraced open pit. The southern bench
 [Supreme Court order, CA 4395/2014, 16 October 2023 (Indian Kanoon transcript)](https://indiankanoon.org/doc/46195082/). [NGT e-Journal 2025, pp.32–36, OA 59/2024 and connected matters](https://www.greentribunal.gov.in/sites/default/files/e-Journal_2025.pdf).
 
 **Limits.** Authorised is a registry match, not a legal conclusion. The zone is a conservative illustrative mine footprint, not the lease or full Phase-II forest-diversion boundary. Its valid_from is the documented state permission of 25 March 2022, so early replay scenes before that date are not covered by this entry.
+
+### Rawa–Nangal border ridge quarries
+
+**Verified visually.** Expected `SUSPECTED_UNAUTHORISED`; categories: MINING, DEFORESTATION, OTHER_CHANGE.
+
+- WGS84 bbox: `[77.01, 27.775, 77.065, 27.825]`; canonical tile `43RGL`.
+- Replay: **2021-03-05 to 2025-03-24**; 158 distinct tile-screened clear dates.
+- Recent 90 days: **9 AOI-clear dates** out of 10 tile-screened dates.
+
+The same-tile pair shows a stripped ridge, exposed quarry strips and changing excavation surfaces, particularly the pale southern/western quarry margin. The central cleared quarry area changes shape and texture. This is a weaker visual change than the airports; a broad ridge AOI contains both worked and unworked slopes.
+
+| Check | Scene (linked STAC record) | UTC acquisition | Tile cloud | AOI valid |
+|---|---|---|---:|---:|
+| Before | [S2B_43RGL_20210305_3_L2A](https://earth-search.aws.element84.com/v1/collections/sentinel-2-l2a/items/S2B_43RGL_20210305_3_L2A) | 2021-03-05T05:41:14.630000Z | 0.000005% | 100.00% |
+| After | [S2B_43RGL_20250324_0_L2A](https://earth-search.aws.element84.com/v1/collections/sentinel-2-l2a/items/S2B_43RGL_20250324_0_L2A) | 2025-03-24T05:41:20.778000Z | 0.000000% | 100.00% |
+
+![Rawa–Nangal border ridge quarries, before](preview-aravalli-before.jpg)
+
+![Rawa–Nangal border ridge quarries, after](preview-aravalli-after.jpg)
+
+**Public record.** The Rajasthan filing, numbered page 24, gives the incident point as 27°47′59″N, 77°02′01″E (27.799722N,77.033611E), inside this bbox. It also records allotted leases in the surrounding Nangal land. The Haryana reply describes permitted mining on the Rajasthan side and reported encroachment toward Haryana. These are respondent filings, not a final finding against a named party. No lease polygon was verified, so no authorisation zone is fabricated.
+
+[Rajasthan respondent reply in NGT OA 06/2025, incident-site coordinates](https://www.greentribunal.gov.in/sites/default/files/news_updates/Short%20Reply%20on%20behalf%20of%20R-%206%20in%20OA%20No%2006%20of%202025%20%28In%20re%20News%20item%20appearing%20in%20The%20Tribune%20dated%2012.12.2024%20titled%20Mining%20Mafia%20brings%20down%20another%20Aravalli%29.pdf). [Haryana respondent reply in NGT OA 06/2025](https://www.greentribunal.gov.in/sites/default/files/news_updates/Reply%20by%20R-1%20in%20OA%20No.%2006%20of%202025%20%28In%20re%20News%20item%20appearing%20in%20The%20Tribune%20dated%2012.12.2024%20titled%20Mining%20Mafia%20brings%20down%20another%20Aravalli%29.pdf).
+
+**Limits.** The bbox crosses a state boundary; imagery alone cannot place individual cuts in a state or lease. The reported encroachment is too small to attribute reliably at 10 m. Nearby Rajasthan permits are explicitly documented. Never describe all visible quarrying as unauthorised. A cross-tile 2021 candidate had visibly different alignment and was rejected; only 43RGL is used for the pair.
 
 ## Authorisation registry limitations
 
