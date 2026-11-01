@@ -8,7 +8,7 @@ import {
   categoryLabel, formatArea, formatClock, formatCount, formatShortDate, healthLabel, runLabel, siteTypeLabel, verdictLabel,
 } from "../format.js";
 import {
-  activityFeed, alertPlace, alertTime, isOpenAlert, on, refreshAll, sortedAlerts, sortedAreas, store,
+  activityFeed, alertPlace, alertPlaceFull, alertTime, isOpenAlert, on, refreshAll, sortedAlerts, sortedAreas, store,
 } from "../state.js";
 import { areaBounds, createMap, flyTo, HEALTH_COLOURS, INDIA_BOUNDS, polygonStyle } from "../map.js";
 import { emptyState, errorState, imageBox, progressBar, relTime, replayBadge, severityTag, statusTag } from "../ui.js";
@@ -227,7 +227,7 @@ export function createOperationsView(root) {
           severityTag(alert.severity),
           relTime(alertTime(alert), "feed-age")),
         h("span.feed-title", categoryLabel(alert.category) || alert.title || "Change detected"),
-        h("span.feed-place", alertPlace(alert)),
+        h("span.feed-place", alertPlaceFull(alert)),
         h("span.feed-foot",
           alert.verdict ? h("span.feed-verdict", verdictLabel(alert.verdict)) : null,
           replayBadge(alert),

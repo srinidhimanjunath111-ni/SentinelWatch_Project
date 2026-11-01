@@ -131,6 +131,8 @@ function artifactFigure(label, url) {
       imageBox(url, { alt: label, ratio: "3 / 2", className: "artifact-image contain", fallback: "Figure not available" })));
 }
 
+const MODEL_NAMES = { change: "Change detector", landcover: "Land cover classifier" };
+
 function modelCard(model) {
   const metrics = model.metrics || {};
   const artifacts = model.artifacts || {};
@@ -142,9 +144,16 @@ function modelCard(model) {
     artifactFigure("Sample predictions", artifacts.samples),
   ].filter(Boolean);
   const ready = String(model.status || "").toUpperCase() === "READY";
+  if (!ready && !model.architecture) {
+    return h("article.panel.model-card",
+      h("header.panel-head",
+        h("h2.panel-title", MODEL_NAMES[model.key] || humanise(model.key)),
+        h("span.tag.tag-status", { dataset: { status: "unavailable" } }, "Not installed")),
+      h("p.panel-empty", "The checkpoint for this model is not on this machine, so scenes are processed without it."));
+  }
   return h("article.panel.model-card", { "aria-label": model.name },
     h("header.panel-head",
-      h("h2.panel-title", model.name || humanise(model.key)),
+      h("h2.panel-title", model.name || MODEL_NAMES[model.key] || humanise(model.key)),
       model.version ? h("span.panel-sub.mono", model.version) : null,
       h("span.tag.tag-status", { dataset: { status: ready ? "ready" : "unavailable" } }, ready ? "Ready" : "Unavailable")),
     h("div.model-body",
@@ -175,38 +184,40 @@ function modelCard(model) {
         : null));
 }
 
-function sourceRow({ name, state, detail, url }) {
-  const healthState = state === true ? "OK" : state === false ? "ERROR" : "CLOUDED";
+const PROVIDER_NAMES = {
+  "earth-search": { name: "Earth Search (Element 84)", url: "https://element84.com/earth-search/" },
+  "planetary-computer": { name: "Microsoft Planetary Computer", url: "https://planetarycomputer.microsoft.com/" },
+  "copernicus-data-space": { name: "Copernicus Data Space", url: "https://dataspace.copernicus.eu/" },
+};
+
+function providerRow(provider) {
+  const known = PROVIDER_NAMES[provider.name] || { name: humanise(provider.name) };
+  const used = Boolean(provider.last_success_at);
+  let health = "CLOUDED";
+  let state = "Standby";
+  if (!provider.healthy) {
+    health = "ERROR";
+    state = "Not responding, next source in use";
+  } else if (used) {
+    health = "OK";
+    state = `Connected, last response ${relativeAge(provider.last_success_at)}`;
+  }
   return h("li.source-row",
-    h("span.dot", { dataset: { health: healthState } }),
-    h("span.source-name", url ? externalLink(url, name) : name),
-    h("span.source-state", state === true ? "Connected" : state === false ? "Unreachable" : "Status not reported"),
-    detail ? h("span.source-detail", detail) : null);
+    h("span.dot", { dataset: { health } }),
+    h("span.source-name", externalLink(known.url, known.name)),
+    h("span.source-state", state),
+    provider.last_scene_at ? h("span.source-detail", `Newest scene ${formatDate(provider.last_scene_at)}`) : null);
 }
 
 function dataSources(system, dataStatus) {
-  const rows = [];
   const providers = asList(system && system.providers);
-  if (providers.length) {
-    for (const provider of providers) {
-      const name = typeof provider === "string" ? provider : provider.name || provider.key;
-      rows.push(sourceRow({
-        name: humanise(name) === name ? name : name,
-        state: typeof provider === "object" && typeof provider.healthy === "boolean" ? provider.healthy : null,
-        detail: typeof provider === "object" && provider.last_scene_at ? `Last scene ${relativeAge(provider.last_scene_at)}` : null,
-        url: typeof provider === "object" ? provider.url : null,
-      }));
-    }
-  } else if (system && system.provider) {
-    rows.push(sourceRow({ name: system.provider, state: null }));
-  }
+  const rows = providers.map(providerRow);
   const smtp = system && system.smtp;
-  if (smtp !== undefined && smtp !== null) {
-    const configured = typeof smtp === "object" ? smtp.configured : Boolean(smtp);
+  if (smtp) {
     rows.push(h("li.source-row",
-      h("span.dot", { dataset: { health: configured ? "OK" : "CLOUDED" } }),
+      h("span.dot", { dataset: { health: smtp.configured ? "OK" : "CLOUDED" } }),
       h("span.source-name", "Department email"),
-      h("span.source-state", configured ? "SMTP connected" : "Saving to outbox (SMTP not configured)")));
+      h("span.source-state", smtp.configured ? "SMTP connected" : "Saving to outbox (SMTP not configured)")));
   }
   const facts = dataStatus ? [
     kv("Scenes on record", formatCount(dataStatus.observations)),

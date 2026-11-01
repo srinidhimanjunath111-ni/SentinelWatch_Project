@@ -5,7 +5,7 @@ import { api, asList } from "../api.js";
 import { icon } from "../icons.js";
 import {
   categoryLabel, errorText, formatArea, formatDate, formatDateTime, formatPercent, formatShortDate, healthLabel, intervalLabel, isFailedRun, isFinalRun, runLabel,
-  sceneStatusLabel, sensitivityLabel, siteTypeLabel,
+  sceneStatusKey, sceneStatusLabel, sensitivityLabel, siteTypeLabel,
 } from "../format.js";
 import { applyRun, on, removeArea, store, upsertArea } from "../state.js";
 import { areaBounds, createMap, fitTo, HEALTH_COLOURS, polygonStyle } from "../map.js";
@@ -180,11 +180,11 @@ export async function mountSite(root, params) {
   // ------------------------------------------------------ timeline
 
   function renderScene(scene) {
-    const status = String(scene.status || "").toLowerCase();
+    const status = sceneStatusKey(scene.status);
     const inner = [
       imageBox(scene.thumbnail, { alt: `Scene of ${formatDate(scene.date)}`, ratio: "1 / 1", className: "scene-thumb", fallback: status === "cloudy" ? "Cloud" : null }),
       h("span.scene-date", formatShortDate(scene.date)),
-      h("span.scene-status", h("span.scene-dot", { dataset: { status } }), sceneStatusLabel(scene.status) || "Catalogued"),
+      h("span.scene-status", h("span.scene-dot", { dataset: { status } }), sceneStatusLabel(scene.status)),
       scene.aoi_clear_fraction !== undefined && scene.aoi_clear_fraction !== null
         ? h("span.scene-cloud", `${formatPercent(scene.aoi_clear_fraction)} clear`)
         : scene.cloud_cover !== undefined && scene.cloud_cover !== null
@@ -371,7 +371,7 @@ export async function mountSite(root, params) {
     h("section.panel.timeline-panel", { "aria-label": "Scene timeline" },
       h("header.panel-head", h("h2.panel-title", "Scene timeline"), timelineCount,
         h("span.timeline-legend",
-          ["alert", "analysed", "cloudy"].map((status) => h("span.timeline-legend-item", h("span.scene-dot", { dataset: { status } }), sceneStatusLabel(status))))),
+          ["alert", "analysed", "cloudy", "clear"].map((status) => h("span.timeline-legend-item", h("span.scene-dot", { dataset: { status } }), sceneStatusLabel(status))))),
       timelineStrip,
       timelineState),
     h("div.site-grid",

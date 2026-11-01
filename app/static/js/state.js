@@ -2,7 +2,7 @@
 // patch themselves. Polling and SSE feed the same functions, so a poll with no change emits nothing.
 
 import { api, asList } from "./api.js";
-import { isFinalRun } from "./format.js";
+import { channelLabel, dispatchStatusLabel, isFinalRun, verdictHeadline } from "./format.js";
 
 const listeners = new Map();
 const pendingTopics = new Set();
@@ -77,6 +77,10 @@ export function alertPlace(alert) {
   if (alert.area_name) return alert.area_name;
   const area = alert.area_id && store.areas.get(alert.area_id);
   return area ? area.name : alert.title || "";
+}
+
+export function alertPlaceFull(alert) {
+  return [alertPlace(alert), alert.state].filter(Boolean).join(", ");
 }
 
 export const isReplay = (record) => record && record.origin === "archive_replay";
@@ -217,8 +221,15 @@ export function pushActivity(item) {
   emit("overview");
 }
 
+/** Server activity lines are logs, some with raw channel and status codes. Show them as sentences. */
+function readableActivity(row) {
+  const match = /^([A-Z_]+) to (.+): ([A-Z_]+)$/.exec(row.text || "");
+  if (!match) return row;
+  return { ...row, text: `${channelLabel(match[1])} to ${match[2]}: ${dispatchStatusLabel(match[3])}` };
+}
+
 export function activityFeed(limit = 20) {
-  const server = asList(store.overview && store.overview.activity);
+  const server = asList(store.overview && store.overview.activity).map(readableActivity);
   const rows = [...store.localActivity, ...server];
   const seen = new Set();
   const unique = [];
@@ -258,7 +269,7 @@ const refreshAreaSoon = (() => {
 export function applyRun(event) {
   if (!event || !event.area_id) return;
   const previous = store.runs.get(event.area_id);
-  const final = isFinalRun(event.status) || isFinalRun(event.stage);
+  const final = isFinalRun(event.status) || isFinalRun(event.stage) || (Number(event.progress_percent) >= 100 && event.status !== "RUNNING");
   store.runs.set(event.area_id, { ...event, final, updatedAt: Date.now() });
   if (!previous || previous.stage !== event.stage) {
     if (event.message) pushActivity({ type: "run", text: `${event.area_name || "Site"}: ${event.message}`, area_id: event.area_id });
@@ -320,9 +331,14 @@ export function applyHeartbeat(event) {
   }
 }
 
-export function applyAlertEvent(alert) {
+export function applyAlertEvent(event) {
+  // "created" is a new alert. "updated" is a dispatch or a repeat detection merging into it.
+  const { event_kind: kind, ...alert } = event;
+  const isNew = !knownAlertIds.has(alert.id);
   applyAlert(alert);
-  pushActivity({ type: "alert", text: `Alert raised at ${alertPlace(alert)}`, area_id: alert.area_id });
+  if (isNew || kind === "created") {
+    pushActivity({ type: "alert", text: `${verdictHeadline(alert.verdict, alert.category)} at ${alertPlace(alert)}`, area_id: alert.area_id });
+  }
   if (alert.area_id) refreshAreaSoon(alert.area_id);
   refreshOverviewSoon(400);
 }

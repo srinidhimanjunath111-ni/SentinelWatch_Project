@@ -23,7 +23,7 @@ function aspectFromBounds(bounds) {
  * @param images {before, after, overlay, ndvi_change}
  * @param meta {beforeDate, afterDate, bounds, findings[] with geometry}
  */
-export function createCompare({ images, beforeDate, afterDate, bounds, polygons = [], overlayDefault = true }) {
+export function createCompare({ images, beforeDate, afterDate, bounds, overlayDefault = true }) {
   let position = 50;
   let dragging = false;
 
@@ -33,7 +33,7 @@ export function createCompare({ images, beforeDate, afterDate, bounds, polygons 
   const ndvi = images.ndvi_change ? imageLayer(images.ndvi_change, "NDVI change", "cmp-ndvi") : null;
 
   const afterClip = h("div.cmp-after", after.img);
-  const outline = polygonLayer(polygons, bounds);
+  const outline = h("svg", { class: "cmp-outline", viewBox: "0 0 100 100", preserveAspectRatio: "none", "aria-hidden": "true" });
 
   const handle = h("div.cmp-handle", {
     role: "slider",
@@ -49,7 +49,8 @@ export function createCompare({ images, beforeDate, afterDate, bounds, polygons 
     svgChevron("m10 3.5 3 4.5-3 4.5")));
 
   const beforeLabel = h("span.cmp-label.cmp-label-left", h("span.cmp-label-k", "Before"), beforeDate ? formatDate(beforeDate) : null);
-  const afterLabel = h("span.cmp-label.cmp-label-right", h("span.cmp-label-k", "After"), afterDate ? formatDate(afterDate) : null);
+  const afterKey = h("span.cmp-label-k", "After");
+  const afterLabel = h("span.cmp-label.cmp-label-right", afterKey, afterDate ? formatDate(afterDate) : null);
   const skeleton = h("div.skeleton.cmp-skeleton", { "aria-hidden": "true" });
 
   const ratio = aspectFromBounds(bounds) || 4 / 3;
@@ -149,14 +150,19 @@ export function createCompare({ images, beforeDate, afterDate, bounds, polygons 
 
   function setLayer(name, visible) {
     frame.classList.toggle(`show-${name}`, visible);
+    if (name === "ndvi") afterKey.textContent = visible ? "NDVI change" : "After";
   }
   setLayer("overlay", overlayDefault && Boolean(overlay));
-  setLayer("outline", polygons.length > 0);
+  const canOutline = validBounds(bounds) !== null;
+  setLayer("outline", canOutline);
 
   return {
     element: frame,
     setLayer,
-    has: { overlay: Boolean(overlay), ndvi: Boolean(ndvi), outline: polygons.length > 0 },
+    setOutline(geometry) {
+      outline.replaceChildren(...polygonShapes(geometry, bounds));
+    },
+    has: { overlay: Boolean(overlay), ndvi: Boolean(ndvi), outline: canOutline },
     setPosition: apply,
   };
 }
@@ -165,19 +171,20 @@ function svgChevron(d) {
   return h("svg", { viewBox: "0 0 16 16", width: 14, height: 14, fill: "none", stroke: "currentColor", "stroke-width": 1.8, "stroke-linecap": "round", "stroke-linejoin": "round" }, h("path", { d }));
 }
 
-/** Draws finding polygons in image space using the georeferenced image bounds. */
-function polygonLayer(polygons, bounds) {
-  if (!polygons.length || !Array.isArray(bounds) || bounds.length !== 2) return null;
+function validBounds(bounds) {
+  if (!Array.isArray(bounds) || bounds.length !== 2) return null;
   const [[south, west], [north, east]] = bounds.map((pair) => pair.map(Number));
   if (![south, west, north, east].every(Number.isFinite) || north <= south || east <= west) return null;
-  const toPoint = ([lon, lat]) => `${(((lon - west) / (east - west)) * 100).toFixed(3)},${(((north - lat) / (north - south)) * 100).toFixed(3)}`;
-  const shapes = [];
-  const addRing = (ring) => shapes.push(h("polygon", { points: ring.map(toPoint).join(" "), "vector-effect": "non-scaling-stroke" }));
-  for (const geometry of polygons) {
-    if (!geometry || !geometry.coordinates) continue;
-    if (geometry.type === "Polygon") addRing(geometry.coordinates[0]);
-    if (geometry.type === "MultiPolygon") geometry.coordinates.forEach((polygon) => addRing(polygon[0]));
-  }
-  if (!shapes.length) return null;
-  return h("svg", { class: "cmp-outline", viewBox: "0 0 100 100", preserveAspectRatio: "none", "aria-hidden": "true" }, shapes);
+  return { south, west, north, east };
+}
+
+/** Finding polygon in image space, using the georeferenced image bounds. */
+function polygonShapes(geometry, bounds) {
+  const box = validBounds(bounds);
+  if (!box || !geometry || !geometry.coordinates) return [];
+  const toPoint = ([lon, lat]) => `${(((lon - box.west) / (box.east - box.west)) * 100).toFixed(3)},${(((box.north - lat) / (box.north - box.south)) * 100).toFixed(3)}`;
+  const ring = (points) => h("polygon", { points: points.map(toPoint).join(" "), "vector-effect": "non-scaling-stroke" });
+  if (geometry.type === "Polygon") return [ring(geometry.coordinates[0])];
+  if (geometry.type === "MultiPolygon") return geometry.coordinates.map((polygon) => ring(polygon[0]));
+  return [];
 }

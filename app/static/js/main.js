@@ -6,7 +6,7 @@ import { formatDuration, formatShortDate, parseDate, relativeAge } from "./forma
 import { chime, isMuted, setMuted } from "./audio.js";
 import { connectEvents } from "./sse.js";
 import {
-  alertPlace, applyAlertEvent, applyDispatch, applyHeartbeat, applyRun, applySceneEvent, on, reconcileRunsFromAreas, refreshAll, setConnection, store,
+  alertPlaceFull, applyAlertEvent, applyDispatch, applyHeartbeat, applyRun, applySceneEvent, on, reconcileRunsFromAreas, refreshAll, setConnection, store,
 } from "./state.js";
 import { emptyState, onTick, openModal, refreshRelativeTimes, showAlertBanner } from "./ui.js";
 import { login, setAuthHandler } from "./api.js";
@@ -261,8 +261,11 @@ setAuthHandler(() => {
 // ------------------------------------------------------------------ live data
 
 on("fresh-alerts", (batch) => {
-  showAlertBanner(batch, alertPlace);
-  const worst = ["critical", "high", "medium", "low"].find((level) => batch.some((alert) => alert.severity === level));
+  // An authorised activity is a logged notice: it joins the feed without interrupting anyone.
+  const loud = batch.filter((alert) => alert.verdict !== "AUTHORISED_ACTIVITY");
+  if (!loud.length) return;
+  showAlertBanner(loud, alertPlaceFull);
+  const worst = ["critical", "high", "medium", "low"].find((level) => loud.some((alert) => alert.severity === level));
   chime(worst || "medium");
 });
 

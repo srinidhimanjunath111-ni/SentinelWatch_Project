@@ -7,11 +7,13 @@ import {
   INTERVALS, MONITOR_CATEGORIES, SITE_TYPES, categoryLabel, errorText, formatArea, siteTypeLabel,
 } from "../format.js";
 import { upsertArea } from "../state.js";
-import { createDrawer, createMap, geodesicAreaKm2, INDIA_BOUNDS } from "../map.js";
+import { createDrawer, createMap, geodesicAreaKm2, geometrySpanKm, INDIA_BOUNDS } from "../map.js";
 import { toast } from "../ui.js";
 
-const MIN_KM2 = 0.5;
-const MAX_KM2 = 2500;
+// The analysis window: 1024 x 1024 px at 10 m on the server, at least 8 px across.
+const MAX_SIDE_KM = 10.2;
+const MIN_SIDE_KM = 0.08;
+const HINT = `Draw the area to monitor, up to ${MAX_SIDE_KM} km across.`;
 
 const STATES = [
   "Andhra Pradesh", "Arunachal Pradesh", "Assam", "Bihar", "Chhattisgarh", "Goa", "Gujarat", "Haryana",
@@ -28,7 +30,7 @@ export async function mountAddSite(root) {
   let drawer = null;
 
   const mapHost = h("div.draw-map", { role: "application", "aria-label": "Draw the monitored area on this map" });
-  const sizeNote = h("p.draw-note", { role: "status" }, "Draw the area to monitor, then fill in the details.");
+  const sizeNote = h("p.draw-note", { role: "status" }, HINT);
 
   const name = h("input.input", { id: "site-name", type: "text", required: true, minlength: 2, maxlength: 160, autocomplete: "off" });
   const state = h("select.input", { id: "site-state" },
@@ -56,22 +58,28 @@ export async function mountAddSite(root) {
     sizeNote.dataset.state = "";
   }
 
-  function sizeCheck(km2) {
-    if (km2 < MIN_KM2) return `This area is ${formatArea(km2 * 1e6)}. Draw at least ${MIN_KM2} km² so changes clear the 10 m pixel grid.`;
-    if (km2 > MAX_KM2) return `This area is ${formatArea(km2 * 1e6)}. Keep a site under ${MAX_KM2.toLocaleString("en-IN")} km²: split a large region into several sites.`;
+  function sizeCheck(target) {
+    const { widthKm, heightKm } = geometrySpanKm(target);
+    const span = `${widthKm.toFixed(1)} km by ${heightKm.toFixed(1)} km`;
+    if (widthKm > MAX_SIDE_KM || heightKm > MAX_SIDE_KM) {
+      return `This area spans ${span}. A site can be at most ${MAX_SIDE_KM} km on either side, so draw a smaller area or split it into several sites.`;
+    }
+    if (widthKm < MIN_SIDE_KM || heightKm < MIN_SIDE_KM) {
+      return "This area is under 80 m across, too small to analyse at 10 m resolution. Zoom in and draw a larger area.";
+    }
     return null;
   }
 
   function onGeometry(next) {
     geometry = next;
     if (!next) {
-      sizeNote.textContent = "Draw the area to monitor, then fill in the details.";
+      sizeNote.textContent = HINT;
       sizeNote.dataset.state = "";
       return;
     }
-    const km2 = geodesicAreaKm2(next);
-    const problem = sizeCheck(km2);
-    sizeNote.textContent = problem || `Area ${formatArea(km2 * 1e6)}.`;
+    const problem = sizeCheck(next);
+    const { widthKm, heightKm } = geometrySpanKm(next);
+    sizeNote.textContent = problem || `Area ${formatArea(geodesicAreaKm2(next) * 1e6)}, ${widthKm.toFixed(1)} km by ${heightKm.toFixed(1)} km.`;
     sizeNote.dataset.state = problem ? "error" : "ok";
   }
 
@@ -140,8 +148,7 @@ export async function mountAddSite(root) {
     if (!geometry) {
       return showError("Draw the area on the map first.");
     }
-    const km2 = geodesicAreaKm2(geometry);
-    const sizeProblem = sizeCheck(km2);
+    const sizeProblem = sizeCheck(geometry);
     if (sizeProblem) return showError(sizeProblem);
     const categories = categoryInputs.filter((item) => item.input.checked).map((item) => item.value);
     if (!categories.length) return showError("Select at least one category to watch for.");

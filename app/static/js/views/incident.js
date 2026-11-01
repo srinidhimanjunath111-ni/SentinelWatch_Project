@@ -5,14 +5,14 @@ import { api, asList } from "../api.js";
 import { icon } from "../icons.js";
 import {
   categoryLabel, channelLabel, dispatchLine, errorText, formatArea, formatDate, formatDateTime, formatLatency, formatPercent, formatSigned,
-  isNum, landcoverLabel, statusLabel, verdictHeadline, zoneTypeLabel,
+  humanise, isNum, landcoverLabel, statusLabel, verdictHeadline, verdictLabel, zoneTypeLabel,
 } from "../format.js";
 import { on, severityRank, store } from "../state.js";
-import { createMap, fitTo, geometryBounds, polygonStyle, HEALTH_COLOURS } from "../map.js";
+import { createMap, fitTo, polygonStyle, HEALTH_COLOURS } from "../map.js";
 import {
   emptyState, errorState, imageBox, illustrativeTag, kv, noteModal, relTime, replayBadge, severityTag, skeletonRows, statusTag, toast,
 } from "../ui.js";
-import { rainfallChart } from "../charts.js";
+import { rainfallBars } from "../charts.js";
 import { createCompare } from "./compare.js";
 
 const L = () => window.L;
@@ -33,25 +33,33 @@ const ACTIONS = {
   false_positive: { label: "Mark false positive", iconName: "x", title: "Mark as false positive", message: "Closes the alert and records that no real change was found.", placeholder: "Why this is not a real change", required: true, danger: true },
 };
 
-function parseRainfall(rainfall) {
-  if (!rainfall || typeof rainfall !== "object") return [];
-  const series = rainfall.daily ?? rainfall.series ?? rainfall.days ?? rainfall.values;
-  if (Array.isArray(series)) {
-    return series
-      .map((row) => ({
-        date: row.date ?? row.day ?? row.time,
-        value: Number(row.mm ?? row.value ?? row.rain_mm ?? row.precipitation_mm ?? row.precipitation),
-      }))
-      .filter((row) => row.date && Number.isFinite(row.value));
+function rainfallBlock(rainfall, afterDate) {
+  if (!rainfall || rainfall.available === false || !isNum(rainfall.total_mm)) {
+    return h("div.context-block",
+      h("h3.section-label", "Rainfall at site"),
+      h("p.muted", "Rainfall record not available for this scene."));
   }
-  if (Array.isArray(rainfall.dates) && Array.isArray(rainfall.mm)) {
-    return rainfall.dates.map((date, index) => ({ date, value: Number(rainfall.mm[index]) })).filter((row) => Number.isFinite(row.value));
+  const days = rainfall.window_days || rainfall.days_with_data;
+  const endYear = (rainfall.end_date || afterDate || "").slice(0, 4);
+  const rows = [
+    { label: endYear || "This scene", value: Number(rainfall.total_mm), current: true },
+    ...asList(rainfall.prior_years)
+      .filter((row) => isNum(row.total_mm))
+      .map((row) => ({ label: String(row.year), value: Number(row.total_mm), current: false })),
+  ];
+  const facts = [];
+  if (isNum(rainfall.anomaly_percent)) {
+    const pct = Math.round(Number(rainfall.anomaly_percent));
+    facts.push(pct === 0 ? "In line with earlier years" : `${Math.abs(pct)}% ${pct > 0 ? "above" : "below"} the earlier-year average`);
   }
-  if (series && Array.isArray(series.time)) {
-    const values = series.precipitation_sum || series.rain_sum || series.mm || [];
-    return series.time.map((date, index) => ({ date, value: Number(values[index]) })).filter((row) => Number.isFinite(row.value));
-  }
-  return [];
+  if (isNum(rainfall.max_daily_mm)) facts.push(`Wettest day ${Number(rainfall.max_daily_mm).toFixed(0)} mm`);
+  if (rainfall.source) facts.push(`Source: ${rainfall.source}`);
+  const normal = isNum(rainfall.normal_mm) && rows.length > 1 ? Number(rainfall.normal_mm) : null;
+  return h("div.context-block.context-rain",
+    h("h3.section-label", days ? `Rainfall at site, ${days} days before the scene` : "Rainfall at site"),
+    rainfallBars(rows, { normal }),
+    normal !== null ? h("p.bars-key", h("span.bars-key-rule", { "aria-hidden": "true" }), `Earlier-year average ${normal.toFixed(0)} mm`) : null,
+    facts.length ? h("p.context-detail", facts.join(" · ")) : null);
 }
 
 function normaliseDispatches(alert) {
@@ -77,6 +85,8 @@ export async function mountIncident(root, params) {
   let alertDetails = new Map();
   let compare = null;
   let smallMap = null;
+  let selectionLayer = null;
+  let seasonalText = null;
   const cleanups = [];
 
   root.replaceChildren(h("div.page.page-wide", skeletonRows(2), h("div.skeleton.skeleton-hero")));
@@ -92,7 +102,7 @@ export async function mountIncident(root, params) {
       return;
     }
     if (disposed) return;
-    const findings = sortFindings(asList(detail.findings));
+    const findings = orderFindings(asList(detail.findings));
     detail.findings = findings;
     selectedFindingId = findings[0] ? findings[0].id : null;
     await loadAlerts();
@@ -112,29 +122,53 @@ export async function mountIncident(root, params) {
 
   const currentFinding = () => asList(detail.findings).find((f) => f.id === selectedFindingId) || asList(detail.findings)[0] || null;
 
-  /** The alert belonging to the selected finding; else the most severe alert on the case. */
+  const primaryAlert = () => [...alertDetails.values()].sort((a, b) => severityRank(b.severity) - severityRank(a.severity))[0] || null;
+
+  /** The alert raised for the selected region. A seasonal region has none, and that is shown as such. */
   function currentAlert() {
     const finding = currentFinding();
-    const all = [...alertDetails.values()];
-    if (finding) {
-      const match = all.find((alert) => alert.finding_id === finding.id);
-      if (match) return match;
-    }
-    return all.sort((a, b) => severityRank(b.severity) - severityRank(a.severity))[0] || null;
+    if (!finding) return primaryAlert();
+    return [...alertDetails.values()].find((alert) => alert.finding_id === finding.id) || null;
+  }
+
+  function selectFinding(id) {
+    selectedFindingId = id;
+    renderVerdict();
+    renderActions();
+    renderDispatch();
+    renderRegions();
+    syncSelection();
+  }
+
+  /** Regions with an alert lead; the rest sort by severity, then size. */
+  function orderFindings(findings) {
+    const alerted = new Set(asList(detail.alerts).map((alert) => alert.finding_id));
+    return sortFindings(findings).sort((a, b) => Number(alerted.has(b.id)) - Number(alerted.has(a.id)));
   }
 
   // ------------------------------------------------------ sections
 
   const headerHost = h("div");
-  const verdictHost = h("div");
+  const verdictHost = h("div", {
+    onclick: (event) => {
+      const button = event.target.closest("[data-finding]");
+      if (button) selectFinding(button.dataset.finding);
+    },
+  });
+  const regionsHost = h("div", {
+    onclick: (event) => {
+      const row = event.target.closest("[data-finding]");
+      if (row) selectFinding(row.dataset.finding);
+    },
+  });
   const actionsHost = h("div");
   const dispatchHost = h("div");
   const toolbarHost = h("div.cmp-toolbar");
 
   function renderHeader() {
     const area = detail.area || {};
-    const alert = currentAlert();
-    const place = [area.district, area.state].filter(Boolean).join(", ") || detail.location;
+    const alert = primaryAlert();
+    const place = area.state || "";
     const next = h("header.page-head",
       h("div.page-head-main",
         h("nav.crumbs", { "aria-label": "Breadcrumb" },
@@ -168,7 +202,8 @@ export async function mountIncident(root, params) {
     const transition = finding && finding.transition;
     const hasTransition = transition && (transition.from || transition.to);
     const indices = (finding && finding.indices) || {};
-    const findings = asList(detail.findings);
+    const alertIds = new Set([...alertDetails.values()].map((item) => item.finding_id));
+    const alertedFindings = asList(detail.findings).filter((item) => alertIds.has(item.id));
 
     const next = h("section.verdict", { dataset: { severity: String(severity || "none").toLowerCase() }, "aria-label": "Verdict" },
       h("div.verdict-top", severityTag(severity), alert ? statusTag(alert.status) : null),
@@ -182,24 +217,14 @@ export async function mountIncident(root, params) {
         alert && Number(alert.persistence_count) > 1
           ? h("div.verdict-fact", h("dt", "Seen in"), h("dd", `${alert.persistence_count} scenes`))
           : null),
-      hasTransition
-        ? h("div.transition", { "aria-label": `Land cover changed from ${landcoverLabel(transition.from)} to ${landcoverLabel(transition.to)}` },
-          h("span.transition-class", landcoverLabel(transition.from) || "Unknown"),
-          icon("arrowRight", { size: 14 }),
-          h("span.transition-class", landcoverLabel(transition.to) || "Unknown"))
-        : null,
-      findings.length > 1
-        ? h("div.finding-switch", { role: "group", "aria-label": "Findings in this incident" },
-          findings.map((item, index) => h("button.seg", {
+      hasTransition ? transitionNode(transition) : null,
+      alertedFindings.length > 1
+        ? h("div.finding-switch", { role: "group", "aria-label": "Alerts in this incident" },
+          alertedFindings.map((item) => h("button.seg", {
             type: "button",
+            dataset: { finding: item.id },
             "aria-pressed": item.id === selectedFindingId ? "true" : "false",
-            onclick: () => {
-              selectedFindingId = item.id;
-              renderVerdict();
-              renderActions();
-              renderDispatch();
-            },
-          }, `${index + 1}. ${categoryLabel(item.category) || "Finding"}`)))
+          }, categoryLabel(item.category) || "Region")))
         : null,
       h("h3.section-label", "Why this verdict"),
       evidenceList(finding) || h("p.muted", "No reasons recorded for this finding."),
@@ -207,15 +232,18 @@ export async function mountIncident(root, params) {
       h("p.screening-note", "Screening result for department verification. A satellite cannot determine legality."));
     if (verdictHost.firstElementChild) morph(verdictHost.firstElementChild, next);
     else verdictHost.appendChild(next);
-    // Finding buttons have per-item handlers, so they need rebinding after a morph.
-    verdictHost.querySelectorAll(".finding-switch .seg").forEach((button, index) => {
-      button.onclick = () => {
-        selectedFindingId = findings[index].id;
-        renderVerdict();
-        renderActions();
-        renderDispatch();
-      };
-    });
+  }
+
+  function transitionNode(transition) {
+    const from = landcoverLabel(transition.from) || "Unknown";
+    const to = landcoverLabel(transition.to) || "Unknown";
+    if (from === to) {
+      return h("div.transition", h("span.transition-class", to), h("span.muted", "Land cover class unchanged"));
+    }
+    return h("div.transition", { "aria-label": `Land cover changed from ${from} to ${to}` },
+      h("span.transition-class", from),
+      icon("arrowRight", { size: 14 }),
+      h("span.transition-class", to));
   }
 
   function indicesRow(indices) {
@@ -235,7 +263,7 @@ export async function mountIncident(root, params) {
     actionsHost.replaceChildren();
     const alert = currentAlert();
     if (!alert) {
-      actionsHost.append(h("p.muted", "No alert was raised for this change, so there is nothing to act on."));
+      actionsHost.append(h("p.muted", "No alert was raised for this region, so there is nothing to act on."));
       return;
     }
     const available = TRANSITIONS[alert.status] || [];
@@ -305,12 +333,12 @@ export async function mountIncident(root, params) {
             h("th", { scope: "col" }, "Sent"),
             h("th", { scope: "col", class: "num" }, "Latency"))),
           h("tbody", rows.map((row) => h("tr",
-            h("td", deptName(row, alert), row.destination ? h("span.cell-sub.mono", row.destination) : null),
+            h("td", deptName(row, alert), row.destination && row.destination !== deptName(row, alert) ? h("span.cell-sub.mono", row.destination) : null),
             h("td", channelLabel(row.channel)),
-            h("td", dispatchLine(row)),
+            h("td", dispatchLine(row), row.file ? h("a.cell-sub", { href: row.file, target: "_blank", rel: "noopener noreferrer" }, "Saved copy") : null),
             h("td", formatDateTime(row.at || row.created_at)),
-            h("td.num", formatLatency(row.latency_seconds ?? (alert && alert.latency_seconds))))))))
-        : h("p.panel-empty", alert ? "Nothing has been dispatched for this alert." : "No alert was raised, so nothing was dispatched."));
+            h("td.num", row.triggered_by === "manual" || String(row.channel).toUpperCase() === "IN_APP" ? "" : formatLatency(alert && alert.latency_seconds)))))))
+        : h("p.panel-empty", alert ? "Nothing has been dispatched for this alert." : "No alert was raised for this region, so nothing was dispatched."));
     if (dispatchHost.firstElementChild) morph(dispatchHost.firstElementChild, next);
     else dispatchHost.appendChild(next);
   }
@@ -329,27 +357,38 @@ export async function mountIncident(root, params) {
       after: detail.after_image,
       overlay: detail.mask_image,
     };
-    const polygons = asList(detail.findings).map(findingGeometry).filter(Boolean);
     const dates = sceneDates();
     compare = createCompare({
       images,
       beforeDate: dates.before,
       afterDate: dates.after,
       bounds: detail.image_bounds,
-      polygons,
     });
-    const toggle = (label, layer, initial, available) => {
+    const toggle = (label, layer, initial, available, after) => {
       if (!available) return null;
-      const input = h("input", { type: "checkbox", onchange: () => compare.setLayer(layer, input.checked) });
+      const input = h("input", {
+        type: "checkbox",
+        onchange: () => {
+          compare.setLayer(layer, input.checked);
+          if (after) after(input.checked);
+        },
+      });
       input.checked = initial;
       return h("label.switch", input, h("span.switch-track", { "aria-hidden": "true" }), h("span", label));
     };
+    const ndviLegend = h("span.ndvi-legend", { hidden: true, "aria-label": "NDVI change scale, from vegetation lost to vegetation gained" },
+      h("span", "Vegetation lost"),
+      h("span.ndvi-ramp", { "aria-hidden": "true" }),
+      h("span", "Gained"));
     setChildren(toolbarHost,
       h("span.cmp-hint", "Drag, or use arrow keys on the handle"),
+      ndviLegend,
       h("span.cmp-toggles",
         toggle("Change overlay", "overlay", true, compare.has.overlay),
-        toggle("Outline", "outline", true, compare.has.outline),
-        toggle("NDVI change", "ndvi", false, compare.has.ndvi)));
+        toggle("Selected region", "outline", true, compare.has.outline),
+        toggle("NDVI change", "ndvi", false, compare.has.ndvi, (on) => {
+          ndviLegend.hidden = !on;
+        })));
     return compare.element;
   }
 
@@ -360,10 +399,70 @@ export async function mountIncident(root, params) {
     };
   }
 
+  function renderRegions() {
+    const findings = asList(detail.findings);
+    if (findings.length < 2) {
+      regionsHost.replaceChildren();
+      return;
+    }
+    const alertIds = new Set([...alertDetails.values()].map((item) => item.finding_id));
+    const quiet = findings.filter((item) => !alertIds.has(item.id));
+    const benign = quiet.filter((item) => item.verdict === "SEASONAL_BENIGN").length;
+    const summary = benign
+      ? `${benign} of ${findings.length} regions read as seasonal or crop cycle and raised no alert.`
+      : `${findings.length} changed regions in this scene pair.`;
+    const next = h("section.panel", { "aria-label": "Changed regions" },
+      h("header.panel-head", h("h2.panel-title", "Changed regions"), h("span.panel-sub", summary)),
+      h("div.table-scroll.regions-scroll", h("table.data-table.data-table-compact",
+        h("thead", h("tr",
+          h("th", { scope: "col" }, "Region"),
+          h("th", { scope: "col" }, "Verdict"),
+          h("th", { scope: "col" }, "Land cover"),
+          h("th", { scope: "col", class: "num" }, "Area"),
+          h("th", { scope: "col", class: "num" }, "Confidence"))),
+        h("tbody", findings.map((item) => {
+          const from = landcoverLabel(item.transition && item.transition.from);
+          const to = landcoverLabel(item.transition && item.transition.to);
+          return h("tr.row-link", { dataset: { finding: item.id }, class: item.id === selectedFindingId ? "is-selected" : null },
+            h("td", h("button.link-btn", { type: "button", dataset: { finding: item.id }, "aria-pressed": item.id === selectedFindingId ? "true" : "false" },
+              alertIds.has(item.id) ? h("span.region-alert", icon("bell", { size: 12 })) : null,
+              categoryLabel(item.category) || "Region")),
+            h("td", verdictLabel(item.verdict)),
+            h("td", from && to ? (from === to ? to : `${from} to ${to}`) : ""),
+            h("td.num", formatArea(item.area_m2)),
+            h("td.num", formatPercent(item.confidence)));
+        })))));
+    if (regionsHost.firstElementChild) morph(regionsHost.firstElementChild, next);
+    else regionsHost.appendChild(next);
+  }
+
+  function syncSelection() {
+    const finding = currentFinding();
+    if (seasonalText) seasonalText.textContent = seasonalSentence();
+    if (compare) compare.setOutline(finding ? findingGeometry(finding) : null);
+    if (smallMap && selectionLayer) {
+      selectionLayer.eachLayer((layer) => {
+        const selected = layer.findingId === selectedFindingId;
+        layer.setStyle(selected
+          ? polygonStyle(HEALTH_COLOURS.ALERT, { fillOpacity: 0.22, weight: 2 })
+          : polygonStyle("#d7dde3", { fillOpacity: 0.04, weight: 1, opacity: 0.6 }));
+        if (selected) layer.bringToFront();
+      });
+    }
+  }
+
+  function seasonalSentence() {
+    const finding = currentFinding();
+    const persists = finding ? finding.seasonal_persists : null;
+    if (persists === true) return "Against the same season a year earlier, this region still shows the change, so it does not read as a seasonal pattern.";
+    if (persists === false) return "This region looks much the same as it did in the same season a year earlier, which points to a seasonal pattern.";
+    return "Reference scene from about a year earlier, used to separate seasonal change from lasting change.";
+  }
+
   function renderSeasonal() {
     const reference = detail.seasonal_reference;
     if (!reference || !reference.image) return null;
-    const persists = asList(detail.findings).map((finding) => finding.seasonal_persists).find((value) => value === true || value === false);
+    seasonalText = h("p", seasonalSentence());
     return h("section.panel", { "aria-label": "Same-season comparison" },
       h("header.panel-head",
         h("h2.panel-title", "Same-season reference"),
@@ -371,9 +470,7 @@ export async function mountIncident(root, params) {
       h("div.seasonal",
         imageBox(reference.image, { alt: `Same-season reference scene, ${formatDate(reference.date)}`, ratio: compareRatio(), className: "seasonal-image" }),
         h("div.seasonal-text",
-          persists === true ? h("p", "The change is not present in the same season a year earlier, so it is not a seasonal pattern.") : null,
-          persists === false ? h("p", "The same season a year earlier looks similar, which points to a seasonal pattern.") : null,
-          persists === null || persists === undefined ? h("p.muted", "Reference scene from about a year earlier, used to separate seasonal change from lasting change.") : null,
+          seasonalText,
           reference.product_id ? h("p.mono.small-break", reference.product_id) : null)));
   }
 
@@ -390,34 +487,25 @@ export async function mountIncident(root, params) {
 
   function renderContext() {
     const context = detail.context || {};
-    const rainfall = context.rainfall || null;
-    const rain = parseRainfall(rainfall);
     const disasters = asList(context.disasters);
     const protectedAreas = asList(context.protected_areas);
     const zones = asList(context.authorised_zones);
     const osm = asList(context.osm_features);
-    const dates = sceneDates();
-    const markers = [];
-    if (dates.before) markers.push({ date: dates.before, label: "Before" });
-    if (dates.after) markers.push({ date: dates.after, label: "After" });
-    const totalMm = rainfall && isNum(rainfall.total_mm) ? Number(rainfall.total_mm) : rain.reduce((sum, row) => sum + row.value, 0);
+    const unavailable = new Set(asList(context.unavailable).map((item) => String((item && item.source) || item)));
+    const disasterFeedsDown = [...unavailable].some((name) => /gdacs|eonet|disaster/i.test(name));
 
     const blocks = [];
-    if (rain.length) {
-      blocks.push(h("div.context-block.context-rain",
-        h("h3.section-label", "Rainfall at site", h("span.section-sub", `${totalMm.toFixed(0)} mm across ${rain.length} days`)),
-        rainfallChart(rain, { markers })));
-    }
+    blocks.push(rainfallBlock(context.rainfall, sceneDates().after));
     blocks.push(h("div.context-block",
       h("h3.section-label", "Disaster events"),
       disasters.length
-        ? h("ul.context-list", disasters.map((event) => contextItem(event.title || event.name || event.type, [event.date || event.at ? formatDate(event.date || event.at) : null, event.source], event.url)))
-        : h("p.muted", "No reported event near this site in the period.")));
+        ? h("ul.context-list", disasters.map((event) => contextItem(event.title || humanise(event.type) || "Reported event", [formatDate(event.date), isNum(event.distance_km) ? `${Number(event.distance_km).toFixed(0)} km away` : null], event.url)))
+        : h("p.muted", disasterFeedsDown ? "Disaster feeds could not be reached for this scene." : "No reported event near this site in the period.")));
     blocks.push(h("div.context-block",
       h("h3.section-label", "Protected-area overlap"),
       protectedAreas.length
-        ? h("ul.context-list", protectedAreas.map((area) => contextItem(area.name || "Protected area", [area.designation || area.type, isNum(area.overlap_m2) ? `${formatArea(area.overlap_m2)} overlap` : null, isNum(area.distance_m) ? `${(area.distance_m / 1000).toFixed(1)} km away` : null], area.url)))
-        : h("p.muted", "Does not overlap a mapped protected area.")));
+        ? h("ul.context-list", protectedAreas.map((area) => contextItem(area.name || "Unnamed protected area", ["OpenStreetMap"], osmUrl(area.osm_id))))
+        : h("p.muted", unavailable.has("osm") ? "OpenStreetMap could not be reached for this scene." : "Does not overlap a mapped protected area.")));
     blocks.push(h("div.context-block",
       h("h3.section-label", "Authorised zones"),
       zones.length
@@ -430,11 +518,15 @@ export async function mountIncident(root, params) {
     if (osm.length) {
       blocks.push(h("div.context-block",
         h("h3.section-label", "Mapped features nearby"),
-        h("ul.context-list", osm.slice(0, 8).map((feature) => contextItem(feature.name || feature.type || feature.kind || "Feature", [feature.tag || feature.category])))));
+        h("ul.context-list", osm.slice(0, 8).map((feature) => contextItem(feature.name || humanise(feature.kind) || "Mapped feature", [feature.name ? humanise(feature.kind) : null], osmUrl(feature.osm_id))))));
     }
     return h("section.panel", { "aria-label": "Context" },
       h("header.panel-head", h("h2.panel-title", "Context")),
       h("div.context-grid", blocks));
+  }
+
+  function osmUrl(osmId) {
+    return osmId && /^(way|relation|node)\/\d+$/.test(osmId) ? `https://www.openstreetmap.org/${osmId}` : null;
   }
 
   function contextItem(title, details, url) {
@@ -447,8 +539,8 @@ export async function mountIncident(root, params) {
   function renderProvenance() {
     const before = detail.before_acquisition || null;
     const after = detail.after_acquisition || null;
-    const row = (label, acquisition, productId) => {
-      const product = (acquisition && acquisition.product_id) || productId;
+    const row = (label, acquisition) => {
+      const product = acquisition && acquisition.product_id;
       if (!product) return null;
       const url = acquisition && acquisition.source_url;
       return kv(label, null, {
@@ -459,12 +551,12 @@ export async function mountIncident(root, params) {
       });
     };
     const rows = [
-      row("Before scene", before, detail.before_product_id),
-      row("After scene", after, detail.after_product_id),
+      row("Before scene", before),
+      row("After scene", after),
       detail.seasonal_reference && detail.seasonal_reference.product_id ? kv("Same-season scene", detail.seasonal_reference.product_id, { mono: true }) : null,
       kv("Imagery source", detail.source),
       kv("Pixel resolution", isNum(detail.pixel_resolution_m) ? `${detail.pixel_resolution_m} m` : null),
-      kv("Analysis method", detail.analysis_method),
+      kv("Analysis method", String(detail.analysis_method || "").split("|").map((part) => humanise(part)).filter(Boolean).join(", ")),
       kv("Model", detail.model_version_label),
       kv("Incident ID", detail.id, { mono: true }),
       kv("Recorded", formatDateTime(detail.created_at)),
@@ -481,22 +573,30 @@ export async function mountIncident(root, params) {
     } catch {
       return;
     }
-    const findings = asList(detail.findings).map(findingGeometry).filter(Boolean);
     const group = L().featureGroup();
     const areaGeometry = store.areas.get((detail.area || {}).id)?.geometry;
-    if (areaGeometry) L().geoJSON(areaGeometry, { style: () => polygonStyle("#c4cdd6", { fillOpacity: 0, weight: 1.5, dashArray: null }) }).addTo(group);
-    for (const geometry of findings) L().geoJSON(geometry, { style: () => polygonStyle(HEALTH_COLOURS.ALERT, { fillOpacity: 0.2 }) }).addTo(group);
+    if (areaGeometry) L().geoJSON(areaGeometry, { interactive: false, style: () => polygonStyle("#c4cdd6", { fillOpacity: 0, weight: 1.5 }) }).addTo(group);
+    selectionLayer = L().featureGroup();
+    for (const finding of asList(detail.findings)) {
+      const geometry = findingGeometry(finding);
+      if (!geometry) continue;
+      L().geoJSON(geometry).eachLayer((layer) => {
+        layer.findingId = finding.id;
+        layer.on("click", () => selectFinding(finding.id));
+        selectionLayer.addLayer(layer);
+      });
+    }
+    selectionLayer.addTo(group);
     group.addTo(smallMap);
-    const bounds = findings.length
-      ? findings.map(geometryBounds).filter(Boolean).reduce((acc, item) => acc.extend(item), L().latLngBounds([]))
-      : group.getBounds();
+    const bounds = group.getBounds();
     const area = detail.area;
     const fallback = area && Array.isArray(area.bbox) ? L().latLngBounds([area.bbox[1], area.bbox[0]], [area.bbox[3], area.bbox[2]]) : null;
     const target = bounds && bounds.isValid() ? bounds : fallback;
     if (target) requestAnimationFrame(() => {
-      if (!disposed) fitTo(smallMap, target, { padding: [28, 28], maxZoom: 15 });
+      if (!disposed) fitTo(smallMap, target, { padding: [16, 16], maxZoom: 15 });
     });
     else smallMap.setView([22, 80], 5);
+    syncSelection();
   }
 
   function renderAll() {
@@ -509,6 +609,8 @@ export async function mountIncident(root, params) {
     renderVerdict();
     renderActions();
     renderDispatch();
+    renderRegions();
+    const provenanceHost = h("div", renderProvenance());
     root.replaceChildren(h("div.page.page-wide.incident",
       headerHost,
       h("div.incident-top",
@@ -520,15 +622,37 @@ export async function mountIncident(root, params) {
           h("div.action-host", actionsHost))),
       h("div.incident-lower",
         h("div.incident-lower-main",
+          regionsHost,
+          dispatchHost,
           renderSeasonal(),
           renderContext(),
-          dispatchHost,
-          renderProvenance()),
+          provenanceHost),
         h("div.incident-lower-side",
           h("section.panel", { "aria-label": "Location" },
             h("header.panel-head", h("h2.panel-title", "Location")),
             mapHost)))));
     mountSmallMap(mapHost);
+    syncSelection();
+    loadProvenance(provenanceHost);
+  }
+
+  /** Scene records come from the site's acquisition list, which carries the source links. */
+  async function loadProvenance(host) {
+    const areaId = (detail.area && detail.area.id) || detail.aoi_id;
+    if (!areaId) return;
+    try {
+      const rows = asList(await api.acquisitions(areaId));
+      if (disposed) return;
+      const byId = new Map(rows.map((row) => [row.id, row]));
+      detail.before_acquisition = byId.get(detail.before_acquisition_id) || null;
+      detail.after_acquisition = byId.get(detail.after_acquisition_id) || null;
+      const wasOpen = host.firstElementChild && host.firstElementChild.open;
+      const next = renderProvenance();
+      next.open = Boolean(wasOpen);
+      host.replaceChildren(next);
+    } catch {
+      // Scene dates are still shown; only the deep links are missing.
+    }
   }
 
   const refreshAlerts = debounce(async () => {

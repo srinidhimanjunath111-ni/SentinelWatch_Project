@@ -16,8 +16,10 @@ function rowsFromInbox(body) {
 function dispatchState(alert) {
   const rows = asList(alert.dispatches || alert.notifications);
   if (!rows.length) return null;
-  const latest = [...rows].sort((a, b) => (Date.parse(b.at || b.created_at || "") || 0) - (Date.parse(a.at || a.created_at || "") || 0))[0];
-  return latest;
+  // The email attempt says more about delivery than the inbox record written alongside it.
+  const outbound = rows.filter((row) => String(row.channel).toUpperCase() !== "IN_APP");
+  const pool = outbound.length ? outbound : rows;
+  return [...pool].sort((a, b) => (Date.parse(b.at || b.created_at || "") || 0) - (Date.parse(a.at || a.created_at || "") || 0))[0];
 }
 
 export async function mountDepartments(root, params) {
@@ -162,7 +164,7 @@ export async function mountDepartments(root, params) {
         ? h("div.dept-grid",
           h("nav.panel.dept-nav", { "aria-label": "Departments" }, deptList),
           h("section.panel", { "aria-label": "Inbox" }, inboxHost))
-        : emptyState("No departments configured", "Departments are created when the service starts."),
+        : emptyState("No departments yet", "A department appears here when an alert is first routed to it."),
       logHost));
     renderDeptList();
     loadCounts();

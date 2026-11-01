@@ -59,6 +59,10 @@ const RUN_LABELS = {
   RUNNING: "Running",
   STARTED: "Started",
   SEARCHING_CATALOGUE: "Searching catalogue",
+  CHECKING_CLOUD: "Checking cloud cover",
+  DETECTING_CHANGE: "Detecting change",
+  GATHERING_CONTEXT: "Gathering context",
+  WRITING_EVIDENCE: "Writing evidence",
   RECORDING_ACQUISITIONS: "Recording scenes",
   SELECTING_PAIR: "Selecting scene pair",
   RETRIEVING_IMAGERY: "Retrieving imagery",
@@ -96,6 +100,7 @@ const FINAL_RUN_STATES = new Set([
 
 const SITE_TYPE_LABELS = {
   FOREST: "Forest",
+  FOREST_RESERVE: "Forest reserve",
   MINING: "Mining belt",
   MINING_BELT: "Mining belt",
   URBAN: "Urban fringe",
@@ -114,42 +119,40 @@ const ZONE_TYPE_LABELS = { MINING: "Mining lease", CONSTRUCTION: "Construction p
 
 const SCENE_STATUS_LABELS = {
   analysed: "Analysed",
-  analyzed: "Analysed",
   cloudy: "Cloudy",
-  clouded: "Cloudy",
-  alert: "Alert raised",
-  pending: "Pending",
-  skipped: "Skipped",
-  baseline: "Baseline",
-  seen: "Catalogued",
+  alert: "Change found",
+  clear: "Clear",
+  catalogued: "Catalogued",
 };
+
+/** Timeline statuses from the API (DISCOVERED, CLEAR, CLOUDED, ANALYSED, CHANGE) to display groups. */
+export function sceneStatusKey(value) {
+  const raw = String(value || "").toUpperCase();
+  if (raw === "CHANGE" || raw === "ALERT") return "alert";
+  if (raw === "ANALYSED" || raw === "ANALYZED") return "analysed";
+  if (raw === "CLOUDED" || raw === "CLOUDY") return "cloudy";
+  if (raw === "CLEAR") return "clear";
+  return "catalogued";
+}
 
 const DISPATCH_STATUS_LABELS = {
   SENT: "Sent",
-  DELIVERED: "Delivered",
+  RECORDED: "Delivered to inbox",
+  OUTBOX_SAVED: "Saved to outbox (SMTP not configured)",
   QUEUED: "Queued",
   PENDING: "Pending",
-  OUTBOX: "Saved to outbox",
-  SAVED_TO_OUTBOX: "Saved to outbox",
-  STORED: "Saved to outbox",
-  LOCAL_OUTBOX: "Saved to outbox",
-  NOT_CONFIGURED: "Saved to outbox",
-  FAILED: "Failed",
-  SKIPPED: "Skipped",
+  FAILED: "Delivery failed",
 };
 
-/** "Saved to outbox (SMTP not configured)": the state, with the backend's reason when it adds one. */
+/** The dispatch state as operators read it. A failure also carries the reason from the server. */
 export function dispatchLine(row) {
   if (!row) return "";
   const label = dispatchStatusLabel(row.status);
-  const detail = row.detail ? String(row.detail).trim() : "";
-  if (!detail) return label;
-  if (detail.toLowerCase().startsWith(label.toLowerCase())) return detail;
-  if (detail.length > 120) return label;
-  return label ? `${label} (${detail})` : detail;
+  if (String(row.status).toUpperCase() === "FAILED" && row.detail && row.detail.length < 160) return `${label}: ${row.detail}`;
+  return label;
 }
 
-const CHANNEL_LABELS = { email: "Email", webhook: "Webhook", sms: "SMS", outbox: "Outbox", in_app: "Console" };
+const CHANNEL_LABELS = { email: "Email", webhook: "Webhook", sms: "SMS", in_app: "Department inbox" };
 
 const SENSITIVITY_LABELS = { LOW: "Low", MEDIUM: "Medium", HIGH: "High" };
 
@@ -175,7 +178,7 @@ export const healthLabel = (v) => lookup(HEALTH_LABELS, v);
 export const runLabel = (v) => lookup(RUN_LABELS, v);
 export const siteTypeLabel = (v) => lookup(SITE_TYPE_LABELS, v);
 export const zoneTypeLabel = (v) => lookup(ZONE_TYPE_LABELS, v);
-export const sceneStatusLabel = (v) => lookup(SCENE_STATUS_LABELS, v);
+export const sceneStatusLabel = (v) => SCENE_STATUS_LABELS[sceneStatusKey(v)];
 export const dispatchStatusLabel = (v) => lookup(DISPATCH_STATUS_LABELS, v);
 export const channelLabel = (v) => lookup(CHANNEL_LABELS, v);
 export const sensitivityLabel = (v) => lookup(SENSITIVITY_LABELS, v);

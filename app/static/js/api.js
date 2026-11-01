@@ -92,6 +92,7 @@ export const api = {
   pause: (areaId) => request(`/api/areas/${id(areaId)}/pause`, { method: "POST" }),
   resume: (areaId) => request(`/api/areas/${id(areaId)}/resume`, { method: "POST" }),
   replay: (areaId, body) => request(`/api/areas/${id(areaId)}/replay`, { method: "POST", body, timeout: 60000 }),
+  acquisitions: (areaId) => request(`/api/areas/${id(areaId)}/acquisitions`),
   timeline: (areaId) => request(`/api/areas/${id(areaId)}/timeline`),
   run: (runId) => request(`/api/monitoring-runs/${id(runId)}`),
 

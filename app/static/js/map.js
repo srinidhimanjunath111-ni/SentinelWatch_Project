@@ -135,6 +135,17 @@ export function geodesicAreaKm2(geometry) {
   return metres / 1e6;
 }
 
+/** East-west and north-south extent of a geometry, close to what a local UTM grid will measure. */
+export function geometrySpanKm(geometry) {
+  const bounds = geometryBounds(geometry);
+  if (!bounds) return { widthKm: 0, heightKm: 0 };
+  const midLat = (bounds.getSouth() + bounds.getNorth()) / 2;
+  return {
+    widthKm: (bounds.getEast() - bounds.getWest()) * 111.32 * Math.cos((midLat * Math.PI) / 180),
+    heightKm: (bounds.getNorth() - bounds.getSouth()) * 110.9,
+  };
+}
+
 /**
  * A draw control restyled to the console: toolbar buttons call these methods, with no default
  * Leaflet.draw chrome. Returns {start(kind), clear(), setGeometry(g), geometry(), destroy()}.
