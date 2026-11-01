@@ -410,11 +410,34 @@ def run(args: argparse.Namespace) -> None:
         for _ in pool.map(work, pending):
             pass
     print(f"Finished: {stats}", flush=True)
+    summarise(args.cache_dir)
 
 
 def load_manifest(cache_dir: Path = CACHE_DIR) -> list[dict]:
     lines = (cache_dir / "manifest.jsonl").read_text(encoding="utf-8").splitlines()
     return [json.loads(line) for line in lines if line]
+
+
+def summarise(cache_dir: Path = CACHE_DIR) -> dict:
+    """Counts per split, measured from the manifest, for the committed dataset report."""
+
+    entries = load_manifest(cache_dir)
+    names = ("tree", "shrub_grass", "crop", "built", "bare", "water", "wetland", "mine")
+    summary: dict = {"chips": len(entries), "by_split": {}, "test_tiles": TEST_TILES, "val_tiles": VAL_TILES}
+    for split in ("train", "val", "test"):
+        group = [e for e in entries if e["split"] == split]
+        counts = np.sum([e["class_pixels"] for e in group], axis=0)
+        summary["by_split"][split] = {
+            "chips": len(group),
+            "tiles": len({e["tile"] for e in group}),
+            "class_pixels": dict(zip(names, counts.tolist(), strict=True)),
+        }
+    months: dict[str, int] = {}
+    for entry in entries:
+        months[entry["date"][:7]] = months.get(entry["date"][:7], 0) + 1
+    summary["scene_months"] = dict(sorted(months.items()))
+    (cache_dir / "summary.json").write_text(json.dumps(summary, indent=2), encoding="utf-8")
+    return summary
 
 
 def load_chips(split: str, cache_dir: Path = CACHE_DIR) -> list[dict]:

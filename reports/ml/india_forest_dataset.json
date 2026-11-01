@@ -1,0 +1,60 @@
+{
+  "generated_at": "2026-11-01T19:38:05.458830+00:00",
+  "hansen_version": "GFC-2025-v1.13",
+  "licence": "CC BY 4.0, Hansen/UMD/Google/USGS/NASA; imagery Copernicus Sentinel-2 open data",
+  "pairs": 416,
+  "by_split": {
+    "train": {
+      "pairs": 262,
+      "loss_pairs": 210,
+      "control_pairs": 52,
+      "positive_pixels": 221477,
+      "negative_pixels": 12187684,
+      "regions": {
+        "central_india": 110,
+        "northeast": 92,
+        "western_ghats": 42,
+        "andaman": 18
+      }
+    },
+    "test": {
+      "pairs": 100,
+      "loss_pairs": 81,
+      "control_pairs": 19,
+      "positive_pixels": 79031,
+      "negative_pixels": 4693736,
+      "regions": {
+        "northeast": 41,
+        "western_ghats": 40,
+        "central_india": 13,
+        "andaman": 6
+      }
+    },
+    "val": {
+      "pairs": 54,
+      "loss_pairs": 42,
+      "control_pairs": 12,
+      "positive_pixels": 39808,
+      "negative_pixels": 2409551,
+      "regions": {
+        "central_india": 21,
+        "western_ghats": 18,
+        "northeast": 15
+      }
+    }
+  },
+  "spectral_evidence": {
+    "adjacent": {
+      "pixels": 492586,
+      "mean_nbr_change": -0.06894139627664053
+    },
+    "forest_no_loss": {
+      "pixels": 19290971,
+      "mean_nbr_change": -0.03908321799181944
+    },
+    "loss_y": {
+      "pixels": 340316,
+      "mean_nbr_change": -0.24129406343584853
+    }
+  }
+}
