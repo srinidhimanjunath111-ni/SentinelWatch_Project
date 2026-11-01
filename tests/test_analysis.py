@@ -98,7 +98,7 @@ def test_whole_window_flood_survives_zero_v2_probability_and_baseline_correction
     )
     assert change_map.spectral.min() >= 0.75
     assert change_map.mask.mean() > 0.95
-    assert change_map.fused[change_map.mask].min() >= 0.75
+    assert change_map.scene_wide_spectral
     assessment = assess_region(
         change_map.mask, change_map=change_map, before_indices=indices_before,
         after_indices=indices_after, after=after,
@@ -570,3 +570,26 @@ def test_illustrative_review_buffer_does_not_cover_distant_or_wrong_type_activit
             context=AssessmentContext(zones=[item]),
         )
         assert assessment.verdict == "SUSPECTED_UNAUTHORISED"
+
+
+def test_bare_to_mine_label_without_exposed_soil_rise_is_not_mining():
+    # v2 detected this pattern on a live worked surface: the cover label flipped,
+    # but BSI barely moved. Neither the label nor a mining-site registration proves new mining.
+    before = _scene(BARE)
+    after = before.copy()
+    after[5] += 0.08
+    assessment = _assess(
+        before, after, from_class=BARE_CLASS, to_class=MINE,
+        context=AssessmentContext(site_type="mining"),
+    )
+    assert assessment.category != "MINING"
+
+
+def test_isolated_spectral_outlier_does_not_trigger_scene_wide_score_override():
+    before, after = _scene(FOREST), _scene(FOREST, BARE)
+    change_map = build_change_map(
+        before, after, compute_indices(before), compute_indices(after), VALID,
+        probability=np.zeros(SHAPE, dtype=np.float32), min_pixels=4,
+    )
+    assert change_map.mask.any()
+    assert change_map.fused.max() <= 0.4

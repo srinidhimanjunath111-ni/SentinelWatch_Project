@@ -101,6 +101,7 @@ class ChangeMap:
     labels: np.ndarray
     component_ids: list[int]
     valid: np.ndarray
+    scene_wide_spectral: bool = False
 
 
 @dataclass
@@ -307,9 +308,6 @@ def build_change_map(
             0.5 + 0.5 * (probability - model_threshold) / max(1.0 - model_threshold, 1e-3),
         ).astype(np.float32)
         fused = MODEL_WEIGHT * rescaled + (1.0 - MODEL_WEIGHT) * spectral
-        # Independent spectral detections must also carry their evidence strength into
-        # the review score; otherwise a low model result admits the mask but vetoes its alert.
-        fused = np.where(spectral >= STRONG_SPECTRAL, np.maximum(fused, spectral), fused)
         fused[~valid] = 0.0
         raw_mask = (
             ((fused >= MASK_THRESHOLD) & (spectral >= MIN_SPECTRAL_SUPPORT))
@@ -342,6 +340,9 @@ def build_change_map(
         labels=final_labels,
         component_ids=list(range(1, len(component_ids) + 1)),
         valid=valid,
+        scene_wide_spectral=(
+            float(((spectral >= STRONG_SPECTRAL) & valid).sum()) / max(1, int(valid.sum())) >= 0.5
+        ),
     )
 
 
@@ -603,7 +604,7 @@ def _classify_cause(
                 reasons.append(_rain_sentence(rain))
                 return "LANDSLIDE", reasons, 0.85
 
-    if to_class == MINE and from_class != MINE:
+    if to_class == MINE and from_class != MINE and deltas["bsi"] >= MINING_BSI_RISE:
         reasons.append(f"Land cover moved from {from_name} to mine or quarry surface.")
         return "MINING", reasons, 0.9
     # Being on a mining site only counts for ground that ends up bare. Fields around a mine
@@ -876,6 +877,11 @@ def assess_region(
     area_pixels = int(region.sum())
     area_m2 = float(area_pixels * pixel_area_m2)
     change_probability = float(np.mean(change_map.fused[region]))
+    # Per-date normalisation may erase an AOI-wide physical conversion. A specific
+    # corroborated cause can then use independent spectral strength. Index shifts with
+    # no cause pattern (including widespread seasonal browning) do not gain alert weight.
+    if change_map.scene_wide_spectral and category in (HUMAN_CAUSED | {"FLOOD", "LANDSLIDE", "BURN_SCAR"}):
+        change_probability = max(change_probability, float(np.mean(change_map.spectral[region])))
     seasonal_support = 1.0 if persists else (0.5 if persists is None else 0.0)
     # A review-ranking score built from visible evidence, not a calibrated probability.
     confidence = float(
