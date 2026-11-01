@@ -220,6 +220,20 @@ def test_stale_osm_cache_is_retained_when_all_sources_fail(monkeypatch):
     assert fetch_osm_features(BBOX) == [{"kind": "quarry", "osm_id": "way/7", "stale": True}]
 
 
+def test_legacy_overpass_failure_does_not_disable_the_new_map_source(monkeypatch):
+    key = ",".join(f"{v:.4f}" for v in BBOX)
+    context_module._cache_put("osm-failed", key, True)
+    calls = []
+
+    def get(url, **kwargs):
+        calls.append(url)
+        return _Response({"elements": []}) if url == context_module.OSM_MAP_URL else _Response({}, status=502)
+
+    monkeypatch.setattr(context_module.httpx, "get", get)
+    assert fetch_osm_features(BBOX) == []
+    assert context_module.OSM_MAP_URL in calls
+
+
 def _stub_sources(monkeypatch, *, rainfall=None, eonet=None, gdacs=None, osm=None):
     monkeypatch.setattr(context_module, "fetch_rainfall", rainfall or (lambda *a: {"available": True, "total_mm": 1.0}))
     monkeypatch.setattr(context_module, "fetch_eonet", eonet or (lambda *a: []))

@@ -411,7 +411,7 @@ def fetch_osm_features(bbox: list[float]) -> list[dict[str, Any]]:
     if cached is not None:
         return cached
     # Overpass is often overloaded. After all mirrors fail, leave it alone for a while.
-    if _cache_get("osm-failed", key, _OSM_FAILURE_TTL_SECONDS) is not None:
+    if _cache_get("osm-sources-failed", key, _OSM_FAILURE_TTL_SECONDS) is not None:
         stale = _cache_get("osm", key, None)
         if stale is not None:
             return [dict(feature, stale=True) for feature in stale]
@@ -456,7 +456,7 @@ def fetch_osm_features(bbox: list[float]) -> list[dict[str, Any]]:
             except (httpx.HTTPError, ValueError) as error:
                 errors.append(f"OSM map API: {error}")
     if body is None:
-        _cache_put("osm-failed", key, True)
+        _cache_put("osm-sources-failed", key, True)
         stale = _cache_get("osm", key, None)
         if stale is not None:
             return [dict(feature, stale=True) for feature in stale]
