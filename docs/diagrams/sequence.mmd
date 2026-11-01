@@ -1,0 +1,27 @@
+sequenceDiagram
+  actor O as Operator
+  participant UI as Browser dashboard
+  participant API as FastAPI
+  participant DB as SQLite
+  participant MON as Monitoring service
+  participant CDSE as CDSE STAC/Process API
+  participant AN as Analysis service
+  participant AL as Alert service
+  O->>UI: Click Check now
+  UI->>API: POST /api/areas/{id}/check-now
+  API->>DB: create MonitoringRun
+  API-->>UI: 202 Accepted + run id
+  API->>MON: background execution
+  MON->>CDSE: STAC search
+  CDSE-->>MON: acquisition metadata
+  MON->>DB: save metadata/run status
+  opt credentials + rasterio installed
+    MON->>CDSE: request imagery
+    MON->>AN: preprocess and compare pair
+    AN-->>MON: analysis/finding candidates
+    MON->>AL: create alerts if threshold met
+    AL->>DB: persist case, finding, alert
+  end
+  UI->>API: read areas/cases/alerts
+  API->>DB: query persisted records
+  API-->>UI: JSON dashboard data

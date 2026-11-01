@@ -1,0 +1,169 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="SentinelWatch: Copernicus Sentinel-2 monitoring for reviewable land-change evidence.">
+  <title>{{ app_name }} | Monitoring Console</title>
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+  <link rel="stylesheet" href="https://unpkg.com/leaflet-draw@1.0.4/dist/leaflet.draw.css">
+  <link rel="stylesheet" href="/static/styles.css">
+</head>
+<body>
+  <header class="topbar">
+    <a class="brand" href="/" aria-label="SentinelWatch home">
+      <span class="brand-mark" aria-hidden="true">S</span>
+      <span>Sentinel<span>Watch</span></span>
+    </a>
+    <nav class="topbar-right" aria-label="Project links">
+      <span class="live-dot" aria-hidden="true"></span><span>Copernicus monitoring console</span>
+      <a href="/docs" target="_blank" rel="noreferrer">API docs</a>
+      <a href="https://browser.stac.dataspace.copernicus.eu" target="_blank" rel="noreferrer">CDSE catalogue</a>
+    </nav>
+  </header>
+
+  <main class="shell">
+    <section class="hero">
+      <div>
+        <p class="eyebrow">PERIODIC SENTINEL-2 LAND-CHANGE MONITORING</p>
+        <h1>Monitor an area. Review the evidence.</h1>
+        <p class="hero-copy">Define a real area of interest, search official Copernicus Sentinel-2 acquisitions, and preserve potential change evidence for human verification.</p>
+      </div>
+      <div class="hero-actions"><button class="secondary-button" id="open-priority">Discover priority areas</button><button class="primary-button" id="open-area">+ Add monitoring area</button></div>
+    </section>
+
+    <p class="notice"><strong>Decision support only.</strong> SentinelWatch detects potential physical land change, not illegality. Every alert requires human verification of imagery quality, seasonality, permissions, and local context.</p>
+    <p id="demo-banner" class="demo-banner" hidden><strong>DEMO DATA MODE.</strong> Displayed cases are generated fixtures for workflow demonstration only, not live satellite observations or validated model results.</p>
+
+    <section id="system-status" class="system-status loading" aria-live="polite">
+      <div class="system-status-head"><span class="status-orb"></span><strong>Checking operational readiness…</strong></div>
+      <p>Loading the actual provider, database, model, and worker status.</p>
+    </section>
+
+    <section class="metric-grid" aria-label="Operational summary">
+      <article class="metric-card"><span>Monitoring areas</span><strong id="metric-areas">—</strong><small id="metric-areas-sub">configured AOIs</small></article>
+      <article class="metric-card accent"><span>Open alerts</span><strong id="metric-alerts">—</strong><small>await human acknowledgement</small></article>
+      <article class="metric-card danger"><span>High priority</span><strong id="metric-high">—</strong><small>high / critical evidence</small></article>
+      <article class="metric-card"><span>Observed change</span><strong id="metric-area">—</strong><small>real completed analyses only</small></article>
+    </section>
+
+    <section class="panel data-panel" aria-labelledby="data-heading">
+      <div class="panel-heading"><div><p class="eyebrow">LIVE DATA STATUS</p><h2 id="data-heading">Provider and database records</h2></div><button class="text-button" id="refresh-data-status">Refresh status</button></div>
+      <div id="data-status-record" class="data-status-record"><div class="empty-state">Loading data-source status...</div></div>
+    </section>
+
+    <section class="panel candidates-panel" aria-labelledby="candidates-heading">
+      <div class="panel-heading"><div><p class="eyebrow">AUTOMATIC DISCOVERY</p><h2 id="candidates-heading">Priority-area candidates</h2></div><span class="panel-caption">Grid-generated candidates are preliminary, not detected incidents</span></div>
+      <div id="candidate-list" class="candidate-list"><div class="empty-state">No candidates generated yet. Use Discover priority areas to search a region.</div></div>
+    </section>
+
+    <section class="panel departments-panel" aria-labelledby="departments-heading">
+      <div class="panel-heading"><div><p class="eyebrow">ALERT ROUTING</p><h2 id="departments-heading">Review departments</h2></div><button class="text-button" id="add-department">Add department</button></div>
+      <div id="department-list" class="department-list"><div class="empty-state">No routing departments configured. Add one when you are ready to assign alerts.</div></div>
+    </section>
+
+    <section class="monitoring-section" aria-labelledby="areas-heading">
+      <div class="section-heading">
+        <div><p class="eyebrow">MONITORING AREAS</p><h2 id="areas-heading">Your AOIs</h2></div>
+        <button class="text-button" id="refresh-dashboard">Refresh data</button>
+      </div>
+      <div id="area-list" class="area-grid" aria-live="polite"><div class="empty-state wide">Loading monitoring areas…</div></div>
+    </section>
+
+    <section class="workspace-grid">
+      <section class="panel cases-panel">
+        <div class="panel-heading">
+          <div><p class="eyebrow">EVIDENCE REGISTER</p><h2>Recent real analyses</h2></div>
+          <span class="panel-caption">Synthetic test fixtures are excluded</span>
+        </div>
+        <div id="case-list" class="case-list" aria-live="polite"><div class="empty-state">Loading preserved evidence…</div></div>
+      </section>
+      <aside class="panel alert-panel">
+        <div class="panel-heading"><div><p class="eyebrow">ALERT QUEUE</p><h2>Human review priority</h2></div></div>
+        <div id="alert-list" class="alert-list"><div class="empty-state">Loading alerts…</div></div>
+      </aside>
+    </section>
+
+    <section class="panel model-panel" aria-labelledby="model-heading">
+      <div class="panel-heading">
+        <div><p class="eyebrow">MODEL GOVERNANCE</p><h2 id="model-heading">Model and evaluation record</h2></div>
+        <span class="panel-caption">Measured evidence only</span>
+      </div>
+      <div id="model-record" class="model-record"><div class="empty-state">Loading the persisted model record...</div></div>
+    </section>
+
+    <section class="method-grid">
+      <article class="method-card"><span class="method-no">01</span><h3>Real source trail</h3><p>Each acquisition retains its official product ID, cloud metadata, selection role, and processing provenance.</p></article>
+      <article class="method-card"><span class="method-no">02</span><h3>Truthful processing</h3><p>A model is used only when a loadable validated checkpoint exists. Otherwise the result explicitly records the spectral/NDVI baseline.</p></article>
+      <article class="method-card"><span class="method-no">03</span><h3>Review, not accusation</h3><p>Potential vegetation loss, construction, or land disturbance is a lead for an investigator—not a legal determination.</p></article>
+    </section>
+
+    <section class="developer-note">
+      <strong>Developer/testing route:</strong> manual image-pair analysis remains available only through <code>POST /api/developer/analyze-image-pair</code>. It is not part of normal monitoring.
+    </section>
+  </main>
+
+  <dialog id="area-dialog" class="area-dialog">
+    <form id="area-form" method="dialog">
+      <div class="dialog-heading">
+        <div><p class="eyebrow">NEW MONITORING AREA</p><h2>Define a real area of interest</h2></div>
+        <button class="icon-button" type="button" id="close-area" aria-label="Close">×</button>
+      </div>
+      <p class="dialog-copy">Draw a polygon or rectangle on the map. If the map is unavailable, paste GeoJSON or enter a WGS84 bounding box. Copernicus searches will use exactly this area.</p>
+
+      <div class="form-grid area-meta-grid">
+        <label>Area name<input name="name" required maxlength="160" placeholder="e.g. Western forest buffer"></label>
+        <label>Check interval
+          <select name="monitoring_interval_minutes">
+            <option value="1440">Every 24 hours</option>
+            <option value="720">Every 12 hours</option>
+            <option value="360">Every 6 hours</option>
+            <option value="10080">Weekly</option>
+          </select>
+        </label>
+        <label>Maximum catalogue cloud cover (%)<input name="max_cloud_cover" type="number" min="0" max="100" step="1" value="20" required></label>
+        <label>Minimum change area (m²)<input name="min_change_area_m2" type="number" min="1" step="1" value="400" required></label>
+        <label>Detection sensitivity
+          <select name="sensitivity"><option value="LOW">Low — fewer alerts</option><option value="MEDIUM" selected>Medium — balanced</option><option value="HIGH">High — investigate more</option></select>
+        </label>
+        <label>Centre (auto-filled)<input id="area-centre" readonly placeholder="Draw an AOI to calculate"></label>
+      </div>
+
+      <fieldset class="category-fieldset">
+        <legend>Monitor for potential change patterns</legend>
+        <label><input type="checkbox" name="categories" value="VEGETATION_LOSS" checked> Vegetation loss</label>
+        <label><input type="checkbox" name="categories" value="CONSTRUCTION" checked> Construction</label>
+        <label><input type="checkbox" name="categories" value="MINING_LAND_DISTURBANCE" checked> Mining / land disturbance</label>
+        <label><input type="checkbox" name="categories" value="OTHER_CHANGE"> Other change</label>
+      </fieldset>
+
+      <div id="aoi-map" class="aoi-map" aria-label="Map for drawing an area of interest"></div>
+      <div class="geometry-fallback">
+        <label>GeoJSON Polygon / MultiPolygon<textarea id="geometry-json" rows="3" placeholder='{"type":"Polygon","coordinates":[[[lon,lat],...]]}'></textarea></label>
+        <label>Or WGS84 bbox <small>west, south, east, north</small><input id="bbox-input" placeholder="77.59, 12.96, 77.60, 12.97"></label>
+        <button id="apply-bbox" type="button" class="secondary-button compact">Use bbox</button>
+      </div>
+      <p class="map-help" id="map-help">Use the polygon or rectangle tool at the top-left of the map. Drawing replaces the previous AOI.</p>
+      <p class="form-error" id="area-error" role="alert"></p>
+      <div class="dialog-actions"><button type="button" class="secondary-button" id="cancel-area">Cancel</button><button type="submit" class="primary-button" id="submit-area">Save monitoring area</button></div>
+    </form>
+  </dialog>
+
+  <dialog id="priority-dialog" class="area-dialog priority-dialog">
+    <form id="priority-form" method="dialog">
+      <div class="dialog-heading"><div><p class="eyebrow">AUTOMATIC DISCOVERY</p><h2>Search a region for preliminary candidates</h2></div><button class="icon-button" type="button" id="close-priority" aria-label="Close">×</button></div>
+      <p class="dialog-copy">SentinelWatch divides your region into a small grid and checks the real catalogue for recency, cloud quality and observation availability. This ranks preliminary monitoring candidates; it does not claim an incident was detected.</p>
+      <div class="form-grid"><label>Region name<input name="region_name" required maxlength="160" placeholder="e.g. District study region"></label><label>Grid size<select name="grid_size"><option value="1">1 cell</option><option value="2" selected>2 × 2 cells</option><option value="3">3 × 3 cells</option></select></label><label>Maximum cloud cover (%)<input name="max_cloud_cover" type="number" min="0" max="100" value="20" required></label><label>Lookback days<input name="lookback_days" type="number" min="7" max="365" value="30" required></label></div>
+      <label class="priority-geometry">WGS84 bounding box <small>west, south, east, north</small><input name="bbox" required placeholder="77.59, 12.96, 77.65, 13.02"></label>
+      <p class="form-error" id="priority-error" role="alert"></p><div class="dialog-actions"><button class="secondary-button" id="cancel-priority" type="button">Cancel</button><button class="primary-button" id="submit-priority" type="submit">Discover candidates</button></div>
+    </form>
+  </dialog>
+
+  <dialog id="detail-dialog" class="detail-dialog"><div id="case-detail"></div></dialog>
+  <div id="toast" class="toast" role="status"></div>
+
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+  <script src="https://unpkg.com/leaflet-draw@1.0.4/dist/leaflet.draw.js"></script>
+  <script src="/static/app.js"></script>
+</body>
+</html>

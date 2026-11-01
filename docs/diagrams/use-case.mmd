@@ -1,0 +1,12 @@
+flowchart LR
+  O([Operator]) --> A1[Create / pause monitoring area]
+  O --> A2[Discover / approve candidate area]
+  O --> A3[Start check now]
+  O --> A4[Inspect cases and alerts]
+  O --> A5[Assign department / review case]
+  O --> A6[Download case report]
+  CDSE([CDSE service]) --> A7[Provide catalogue metadata]
+  CDSE --> A8[Provide raster imagery when authenticated]
+  MAIL([Configured SMTP recipient]) <-->|Optional email| A9[Deliver notification]
+  A3 --> A7
+  A3 -. optional .-> A8

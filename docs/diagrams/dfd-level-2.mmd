@@ -1,0 +1,15 @@
+flowchart TB
+  A[AOI + monitoring run] --> S[Search STAC metadata]
+  S --> C[Persist acquisitions / catalogue refresh]
+  C --> P[Choose before and after observations]
+  P --> Q{Credentials and rasterio available?}
+  Q -- No --> X[Record blocked / failed run; no false analysis]
+  Q -- Yes --> R[Request six-band GeoTIFF]
+  R --> G[Align rasters, mask cloud/shadow, calculate NDVI]
+  G --> M{Validated Siamese checkpoint?}
+  M -- Yes --> ML[Siamese U-Net probability map]
+  M -- No --> B[Spectral baseline probability map]
+  ML --> T[Threshold, morphology, connected components]
+  B --> T
+  T --> F[Classify region, calculate area, save finding]
+  F --> L[Create deduplicated alert when threshold is met]

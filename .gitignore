@@ -1,0 +1,27 @@
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+.pytest_cache/
+.coverage
+htmlcov/
+
+# Local application state and generated evidence
+instance/
+storage/uploads/
+storage/outputs/
+data/raw/
+data/processed/
+data/demo/
+models/checkpoints/
+models/*.pt
+models/*.pth
+reports/training/
+reports/evaluation/
+
+# Local configuration
+.env
+
+# Temporary document-build artifacts
+tmp/

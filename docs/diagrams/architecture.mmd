@@ -1,0 +1,15 @@
+flowchart LR
+  U[Reviewer / Operator] --> UI[Dashboard\nHTML + JS + Leaflet]
+  UI --> API[FastAPI application]
+  API --> DB[(SQLite + SQLAlchemy)]
+  API --> MON[Monitoring service\nbackground task]
+  MON --> STAC[CDSE STAC catalogue\nexternal]
+  MON -. credentials required .-> PROC[CDSE Process API\nexternal]
+  MON -. rasterio required .-> GEO[Geospatial preprocessing]
+  GEO --> ANALYSE[Baseline analysis\nor optional Siamese U-Net]
+  ANALYSE --> DB
+  ANALYSE --> ALERT[Alerting + priority]
+  ALERT --> DB
+  ALERT -. optional SMTP .-> MAIL[Configured email recipient]
+  API --> PDF[Case PDF reporting]
+  PDF --> U

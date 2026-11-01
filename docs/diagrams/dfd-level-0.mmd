@@ -1,0 +1,6 @@
+flowchart LR
+  USER[Operator / reviewer] -->|areas, discovery requests, reviews| SW((SentinelWatch))
+  SW -->|dashboard, cases, alerts, reports| USER
+  CDSE[Copernicus Data Space Ecosystem] -->|catalogue metadata; imagery when configured| SW
+  SW -->|STAC search / Process API request| CDSE
+  SW -. optional notification .-> EMAIL[Configured email recipient]

@@ -1,0 +1,18 @@
+flowchart TD
+  A([Start]) --> B[Define or approve area]
+  B --> C[Run monitor now or scheduler]
+  C --> D[Search CDSE STAC]
+  D --> E{Enough suitable observations?}
+  E -- No --> F[Store status / explain no pair]
+  F --> Z([End])
+  E -- Yes --> G{Credentials + rasterio available?}
+  G -- No --> H[Record blocked run]
+  H --> Z
+  G -- Yes --> I[Retrieve and preprocess image pair]
+  I --> J[Baseline or model analysis]
+  J --> K{Significant change?}
+  K -- No --> L[Store analysis with no alert]
+  K -- Yes --> M[Store finding, case and alert]
+  L --> Z
+  M --> N[Optional department routing / email]
+  N --> Z

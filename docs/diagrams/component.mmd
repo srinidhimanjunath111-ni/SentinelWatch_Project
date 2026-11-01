@@ -1,0 +1,10 @@
+flowchart LR
+  FE[Static frontend\nindex.html / app.js / CSS] --> BE[FastAPI routers\nmain, monitoring, operations]
+  BE --> SVC[Services\nmonitoring, analysis, alerting, reporting]
+  SVC --> SAT[Satellite adapter\ncopernicus.py]
+  SVC --> ML[ML package\nsiamese_unet + inference]
+  SVC --> GEO[Geospatial service]
+  BE --> ORM[SQLAlchemy models]
+  ORM --> SQL[(SQLite)]
+  SAT --> CDSE[CDSE endpoints]
+  SVC --> SMTP[Optional SMTP]

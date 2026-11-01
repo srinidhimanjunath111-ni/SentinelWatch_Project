@@ -1,0 +1,6 @@
+-r requirements-core.txt
+
+# Real Sentinel-2 GeoTIFF validation, alignment, masking, raster-to-vector regions.
+rasterio>=1.3.10
+pyproj>=3.6
+reportlab>=4.2,<5

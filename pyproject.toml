@@ -1,0 +1,13 @@
+[tool.pytest.ini_options]
+pythonpath = ["."]
+testpaths = ["tests"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "B"]
+# FastAPI declares request fields/dependencies in function defaults by design.
+# Long evidence messages and CLI examples remain clearer as single statements.
+ignore = ["B008", "E501"]

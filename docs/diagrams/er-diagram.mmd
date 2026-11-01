@@ -1,0 +1,47 @@
+erDiagram
+  MonitoringArea ||--o{ AOIAcquisition : links
+  SatelliteAcquisition ||--o{ AOIAcquisition : links
+  MonitoringArea ||--o{ MonitoringRun : schedules
+  MonitoringArea ||--o{ AnalysisRecord : analyses
+  AnalysisRecord ||--o{ Case : creates
+  Case ||--o{ Finding : contains
+  Case ||--o{ Alert : contains
+  Case ||--o{ CaseReview : receives
+  Department ||--o{ Alert : assigned_to
+  Alert ||--o{ NotificationAttempt : records
+  MonitoringArea ||--o{ PriorityCandidate : approved_from
+  MonitoringArea {
+    string id PK
+    string name
+    json geometry
+    boolean is_active
+  }
+  SatelliteAcquisition {
+    string id PK
+    string provider_product_id
+    datetime acquired_at
+    float cloud_cover
+  }
+  AnalysisRecord {
+    string id PK
+    string method
+    string status
+    datetime created_at
+  }
+  Case {
+    string id PK
+    string status
+    string title
+  }
+  Finding {
+    string id PK
+    string change_type
+    float confidence
+    float area_m2
+  }
+  Alert {
+    string id PK
+    string severity
+    float priority_score
+    string status
+  }

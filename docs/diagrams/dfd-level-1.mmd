@@ -1,0 +1,16 @@
+flowchart TB
+  U[Operator] --> P1[1. Manage area / discover candidate]
+  P1 --> D1[(SQLite database)]
+  P1 --> P2[2. Queue monitoring run]
+  P2 --> P3[3. Search CDSE catalogue]
+  P3 <--> E1[CDSE STAC]
+  P3 --> D1
+  P3 --> P4[4. Select temporal pair]
+  P4 -. configured credentials + rasterio .-> P5[5. Retrieve and preprocess imagery]
+  P5 --> P6[6. Change analysis]
+  P6 --> D1
+  P6 --> P7[7. Create finding / alert]
+  P7 --> D1
+  P7 -. optional SMTP .-> E2[Email service]
+  D1 --> P8[8. Dashboard / case report]
+  P8 --> U

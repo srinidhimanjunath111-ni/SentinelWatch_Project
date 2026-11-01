@@ -1,0 +1,1 @@
+"""SentinelWatch application package."""
