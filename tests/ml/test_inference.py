@@ -20,7 +20,6 @@ from app.ml.inference import (  # noqa: E402
     LANDCOVER_NODATA,
     ChangeDetector,
     LandCoverClassifier,
-    SiameseInference,
     get_change_detector,
     get_landcover_classifier,
 )
@@ -235,15 +234,6 @@ def test_concurrent_predictions_match_serial(change_path):
 def test_singletons_are_cached():
     assert get_change_detector() is get_change_detector()
     assert get_landcover_classifier() is get_landcover_classifier()
-
-
-def test_compatibility_alias_stays_on_labelled_baseline(change_path):
-    """Legacy callers pass RGB; the six-band model must not claim to serve them."""
-
-    alias = SiameseInference(change_path)
-    assert alias.available is False
-    with pytest.raises(RuntimeError):
-        alias.predict(np.zeros((8, 8, 3)), np.zeros((8, 8, 3)))
 
 
 def test_pair_normalisation_removes_band_offset_and_gain():

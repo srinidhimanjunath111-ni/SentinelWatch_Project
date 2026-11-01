@@ -15,7 +15,7 @@ from typing import Any
 import numpy as np
 from scipy import ndimage
 
-from app.ml.inference import LANDCOVER_CLASSES
+from app.ml.inference import LANDCOVER_CLASSES, LANDCOVER_NODATA
 from app.satellite.provider import SCL_INVALID
 from app.vocabulary import (
     AUTHORISED_ACTIVITY,
@@ -29,7 +29,7 @@ from app.vocabulary import (
 
 B02, B03, B04, B08, B11, B12 = range(6)
 TREE, SHRUB_GRASS, CROP, BUILT, BARE, WATER, WETLAND, MINE = range(8)
-NODATA_CLASS = 255
+NODATA_CLASS = LANDCOVER_NODATA
 
 # Index change treated as meaningful on its own, per index at MEDIUM sensitivity.
 INDEX_THRESHOLDS = {"ndvi": 0.22, "nbr": 0.25, "ndwi": 0.25, "bsi": 0.13, "ndbi": 0.18}

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import numpy as np
+import pytest
 
 from app.services.analysis import (
     BARE as BARE_CLASS,
@@ -70,11 +71,43 @@ def test_change_filling_the_whole_window_is_still_detected():
     before, after = _scene(FOREST), _scene(BARE)
     before_indices, after_indices = compute_indices(before), compute_indices(after)
     assert spectral_score(before_indices, after_indices, VALID).max() > 0.5
-    for probability in (None, np.ones(SHAPE, dtype=np.float32)):
+    for probability in (None, np.ones(SHAPE, dtype=np.float32), np.zeros(SHAPE, dtype=np.float32)):
         change_map = build_change_map(
             before, after, before_indices, after_indices, VALID, min_pixels=4, probability=probability
         )
         assert change_map.component_ids
+
+
+@pytest.mark.parametrize("from_class,to_class", [(255, 255), (255, WATER_CLASS), (BARE_CLASS, 255)])
+def test_nodata_landcover_never_indexes_the_class_names(from_class, to_class):
+    assessment = _assess(
+        _scene(BARE), _scene(BARE, WATER), from_class=from_class, to_class=to_class,
+        context=AssessmentContext(rainfall=Rainfall(available=True, total_mm=180.0)),
+    )
+    assert assessment.transition_from is None if from_class == 255 else assessment.transition_from == "bare"
+    assert assessment.transition_to is None if to_class == 255 else assessment.transition_to == "water"
+    assert (assessment.category, assessment.verdict) == ("FLOOD", "NATURAL_EVENT")
+
+
+def test_whole_window_flood_survives_zero_v2_probability_and_baseline_correction():
+    before, after = _scene(FOREST), _scene(WATER)
+    indices_before, indices_after = compute_indices(before), compute_indices(after)
+    change_map = build_change_map(
+        before, after, indices_before, indices_after, VALID, min_pixels=4,
+        probability=np.zeros(SHAPE, dtype=np.float32), model_threshold=0.47827455747013037,
+    )
+    assert change_map.spectral.min() >= 0.75
+    assert change_map.mask.mean() > 0.95
+    assessment = assess_region(
+        change_map.mask, change_map=change_map, before_indices=indices_before,
+        after_indices=indices_after, after=after,
+        before_classes=np.full(SHAPE, TREE, dtype=np.uint8),
+        after_classes=np.full(SHAPE, WATER_CLASS, dtype=np.uint8),
+        reference_indices=None, reference_valid=None,
+        context=AssessmentContext(rainfall=Rainfall(available=True, total_mm=180.0)),
+        pixel_area_m2=100.0,
+    )
+    assert (assessment.category, assessment.verdict) == ("FLOOD", "NATURAL_EVENT")
 
 
 def test_a_small_haze_shift_across_the_window_is_not_change():

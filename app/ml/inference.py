@@ -366,24 +366,3 @@ def get_landcover_classifier() -> LandCoverClassifier:
                 _landcover_classifier = LandCoverClassifier()
     return _landcover_classifier
 
-
-class SiameseInference:
-    """Compatibility shim for app/services/{analysis,system}.py until the backend moves over.
-
-    Those callers pass H x W x 3 RGB arrays. The installed model needs six bands, and SWIR cannot
-    honestly be invented from RGB, so this reports available=False. analysis.py then uses its
-    labelled spectral baseline and never attributes a result to a model it did not run. New code
-    should call get_change_detector().
-    """
-
-    def __init__(self, checkpoint: Path, threshold: float = 0.50):
-        self.checkpoint = checkpoint
-        self.threshold = threshold
-        self.available = False
-        self.device = "cpu"
-        self.model = None
-
-    def predict(self, before: np.ndarray, after: np.ndarray) -> np.ndarray:
-        raise RuntimeError(
-            "The RGB interface cannot run the six-band model; use get_change_detector()."
-        )

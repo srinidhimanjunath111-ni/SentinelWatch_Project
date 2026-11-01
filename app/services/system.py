@@ -94,7 +94,7 @@ def models_payload(base_url: str) -> list[dict[str, Any]]:
         runtime = _runtime_state(key)
         model.update(runtime)
         if key not in registry:
-            model["status"] = "NOT_TRAINED"
+            model["status"] = "REGISTRY_MISSING"
         elif not _checkpoint_present(model):
             model["status"] = "CHECKPOINT_MISSING"
         elif runtime["runtime_status"] == "LOAD_FAILED":

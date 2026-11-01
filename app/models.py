@@ -130,7 +130,7 @@ class ModelVersion(Base):
     name: Mapped[str] = mapped_column(String(128), unique=True)
     architecture: Mapped[str] = mapped_column(String(128), default="Siamese U-Net")
     checkpoint_path: Mapped[str] = mapped_column(String(512))
-    status: Mapped[str] = mapped_column(String(32), default="NOT_TRAINED")
+    status: Mapped[str] = mapped_column(String(32), default="REGISTRY_MISSING")
     training_dataset: Mapped[str | None] = mapped_column(String(255), nullable=True)
     metrics_json: Mapped[str] = mapped_column(Text, default="{}")
     notes: Mapped[str | None] = mapped_column(Text, nullable=True)

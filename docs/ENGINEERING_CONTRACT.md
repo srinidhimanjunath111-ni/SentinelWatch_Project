@@ -25,7 +25,13 @@ cloudy. The UI states this; it never invents a scene.
 ## 2. Bands and arrays
 
 All model and analysis arrays use this band order on one 10 m grid, as float32 surface reflectance
-in `[0, 1]` (after applying STAC scale/offset), shaped `[6, H, W]`:
+in `[0, 1]`, shaped `[6, H, W]`. Radiometry follows `app/satellite/stac.py`: scale digital
+numbers after removing only the offset still present in the provider's pixels. Earth Search
+COGs with `earthsearch:boa_offset_applied=true` already have the BOA offset removed; do not
+apply the STAC offset again. Pre-04.00 baselines have no offset. For modern Earth Search
+scenes with a false or absent flag, radiometry is ambiguous and the provider chain reads
+the raw scene from a fallback provider (Planetary Computer removes 1000 DN for baseline
+04.00 or later). Zero DN remains no-data.
 
 ```
 index  0    1    2    3    4    5
@@ -43,13 +49,17 @@ class ChangeDetector:
     def predict(self, before: np.ndarray, after: np.ndarray, valid: np.ndarray) -> np.ndarray:
         """[6,H,W] x 2 -> float32 H x W change probability in [0,1]. Sliding window, any size."""
 
+LANDCOVER_NODATA = 255  # invalid pixels; never an index into LANDCOVER_CLASSES
 LANDCOVER_CLASSES = ("tree", "shrub_grass", "crop", "built", "bare", "water", "wetland", "mine")
 
 class LandCoverClassifier:
     def __init__(self, checkpoint: Path | None = None): ...
     available: bool; device: str
     def predict(self, scene: np.ndarray, valid: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
-        """[6,H,W] -> (uint8 H x W class index, float32 [8,H,W] probabilities)."""
+        """[6,H,W] -> (uint8 H x W class index, float32 [8,H,W] probabilities).
+        Invalid/non-finite pixels have label LANDCOVER_NODATA and all-zero probabilities.
+        Consumers exclude these labels before voting or indexing LANDCOVER_CLASSES.
+        """
 
 def get_change_detector() -> ChangeDetector: ...          # process-wide cached singletons
 def get_landcover_classifier() -> LandCoverClassifier: ...  # safe for concurrent threads
