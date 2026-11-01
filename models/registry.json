@@ -1,5 +1,5 @@
 {
-  "generated_at": "2026-11-01T19:34:59.249812Z",
+  "generated_at": "2026-11-01T20:06:09.501112Z",
   "models": [
     {
       "key": "change",
@@ -83,6 +83,149 @@
         "OSCD imagery is Sentinel-2 L1C while live imagery is L2A. Per-pair per-band normalisation reduces this shift but does not remove it, and no OSCD-style pixel labels exist on L2A to measure the residual.",
         "OSCD has 24 pairs. The test set is 10 cities and validation is only 2, so metrics and the tuned threshold carry real sampling uncertainty.",
         "The model reports physical change only. It cannot determine cause or legality."
+      ]
+    },
+    {
+      "key": "landcover",
+      "name": "SentinelWatch land-cover classifier",
+      "version": "v1",
+      "architecture": "U-Net, base 32 channels, 8 classes",
+      "parameters": 3130056,
+      "status": "READY",
+      "checkpoint": "models/checkpoints/landcover_unet.pt",
+      "checkpoint_sha256": "3d317266ef39be57a3e509f9bb1a7c4faf8c61a2ca1e7dec7f2637a4b857fbda",
+      "checkpoint_bytes": 12561093,
+      "input_bands": [
+        "B02",
+        "B03",
+        "B04",
+        "B08",
+        "B11",
+        "B12"
+      ],
+      "normalisation": "fixed per-band standardisation from the training set",
+      "classes": [
+        "tree",
+        "shrub_grass",
+        "crop",
+        "built",
+        "bare",
+        "water",
+        "wetland",
+        "mine"
+      ],
+      "trained_at": "2026-11-01T20:01:29.571368+00:00",
+      "device": "mps",
+      "epochs": 59,
+      "training_seconds": 1810.8130654159977,
+      "threshold": null,
+      "datasets": [
+        {
+          "name": "India land cover: Sentinel-2 L2A 2021, ESA WorldCover 2021 v200, Maus et al. 2022 mining polygons",
+          "url": "https://esa-worldcover.org/ ; https://doi.org/10.1594/PANGAEA.942325",
+          "licence": "WorldCover CC BY 4.0; mining polygons CC BY-SA 4.0; imagery Copernicus Sentinel-2 open data",
+          "role": "train",
+          "samples": 580
+        },
+        {
+          "name": "India land cover: Sentinel-2 L2A 2021, ESA WorldCover 2021 v200, Maus et al. 2022 mining polygons",
+          "url": "https://esa-worldcover.org/ ; https://doi.org/10.1594/PANGAEA.942325",
+          "licence": "WorldCover CC BY 4.0; mining polygons CC BY-SA 4.0; imagery Copernicus Sentinel-2 open data",
+          "role": "val",
+          "samples": 124
+        },
+        {
+          "name": "India land cover: Sentinel-2 L2A 2021, ESA WorldCover 2021 v200, Maus et al. 2022 mining polygons",
+          "url": "https://esa-worldcover.org/ ; https://doi.org/10.1594/PANGAEA.942325",
+          "licence": "WorldCover CC BY 4.0; mining polygons CC BY-SA 4.0; imagery Copernicus Sentinel-2 open data",
+          "role": "test",
+          "samples": 118
+        }
+      ],
+      "metrics": {
+        "split": "test",
+        "f1": 0.5264485881960612,
+        "iou": 0.37295083747628066,
+        "accuracy": 0.5602063767388921,
+        "macro_f1": 0.5264485881960612,
+        "macro_iou": 0.37295083747628066,
+        "per_class": {
+          "tree": {
+            "f1": 0.6612404014212424,
+            "iou": 0.4939201945765488,
+            "precision": 0.7083523300266612,
+            "recall": 0.6200044194051195,
+            "support_pixels": 1678959
+          },
+          "shrub_grass": {
+            "f1": 0.284122391034149,
+            "iou": 0.16558429899052518,
+            "precision": 0.3367116532821397,
+            "recall": 0.2457413178422864,
+            "support_pixels": 1426028
+          },
+          "crop": {
+            "f1": 0.5921557506130986,
+            "iou": 0.4206116911518977,
+            "precision": 0.5414954663416972,
+            "recall": 0.6532735754040451,
+            "support_pixels": 2231001
+          },
+          "built": {
+            "f1": 0.6240743919885551,
+            "iou": 0.4535669576573242,
+            "precision": 0.5315730725924771,
+            "recall": 0.7555510908196562,
+            "support_pixels": 288682
+          },
+          "bare": {
+            "f1": 0.5256865509180778,
+            "iou": 0.3565636271211058,
+            "precision": 0.4890590469075855,
+            "recall": 0.568244561194548,
+            "support_pixels": 414751
+          },
+          "water": {
+            "f1": 0.6497909364204483,
+            "iou": 0.4812520919521763,
+            "precision": 0.5645529619822146,
+            "recall": 0.7653451432951497,
+            "support_pixels": 234830
+          },
+          "wetland": {
+            "f1": 0.21570442808164683,
+            "iou": 0.12089052479670512,
+            "precision": 0.24247894103489773,
+            "recall": 0.194254820218864,
+            "support_pixels": 153520
+          },
+          "mine": {
+            "f1": 0.6588138550912722,
+            "iou": 0.49121731356396225,
+            "precision": 0.689609437564383,
+            "recall": 0.6306511468305284,
+            "support_pixels": 1258948
+          }
+        },
+        "per_dataset": {
+          "india_landcover_test": {
+            "f1": 0.5264485881960612,
+            "iou": 0.37295083747628066,
+            "accuracy": 0.5602063767388921
+          }
+        }
+      },
+      "artifacts": {
+        "learning_curve": "reports/ml/landcover_v1_training_curve.png",
+        "confusion_matrix": "reports/ml/landcover_v1_test_confusion.png",
+        "samples": "reports/ml/landcover_v1_test_samples.png"
+      },
+      "limitations": [
+        "Reference labels are ESA WorldCover 2021, itself a model output with its own errors (around 75 percent reported global accuracy), so scores measure agreement with WorldCover rather than ground truth.",
+        "The mine class comes from Maus et al. 2022 polygons digitised on a 2019 mosaic. They include tailings, ponds and plant, and omit mines opened or unmapped since, so unmapped mines are labelled as other classes during training and scoring.",
+        "A mine class from polygons cannot determine legality or current activity. It marks a mining-related footprint.",
+        "Trained on 2021 India L2A scenes from dry and post-monsoon dates. Monsoon-season scenes and other years are outside the training distribution.",
+        "Held-out tiles are different places, but only a few mining belts exist, so mine metrics rest on few sites."
       ]
     }
   ]

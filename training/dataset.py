@@ -10,7 +10,12 @@ from dataclasses import dataclass
 
 import numpy as np
 
-from app.ml.preprocessing import apply_statistics, normalise_scene, pair_statistics
+from app.ml.preprocessing import (
+    NORMALISE_POOLED,
+    apply_statistics,
+    normalise_scene,
+    pair_statistics,
+)
 from data_tools.fetch_oscd import IGNORE, ChangeRecord
 
 CROP_SIZES = (128, 160, 192, 224, 256)
@@ -62,11 +67,13 @@ class ChangeSampler:
         seed: int,
         source_weights: dict[str, float] | None = None,
         augment: ChangeAugment | None = None,
+        normalisation: str = NORMALISE_POOLED,
     ):
         if not records:
             raise ValueError("ChangeSampler needs at least one record")
         self.records = records
         self.augment = augment or ChangeAugment()
+        self.normalisation = normalisation
         self.rng = np.random.default_rng(seed)
         # City sizes differ by a factor of 10; sqrt keeps big cities from dominating.
         weights = np.array([np.sqrt(r.mask.size) for r in records], dtype=np.float64)
@@ -80,7 +87,7 @@ class ChangeSampler:
         self.positives = [np.argwhere(r.mask == 1) for r in records]
         self.record_stats = [
             pair_statistics(
-                to_reflectance(r.before), to_reflectance(r.after), r.mask != IGNORE
+                to_reflectance(r.before), to_reflectance(r.after), r.pixel_valid(), normalisation
             )
             for r in records
         ]
@@ -118,13 +125,16 @@ class ChangeSampler:
         before = to_reflectance(record.before[:, slices[0], slices[1]])
         after = to_reflectance(record.after[:, slices[0], slices[1]])
         mask = record.mask[slices].astype(np.uint8)
+        valid = record.pixel_valid()[slices]
         if crop_h != size or crop_w != size:
             pad = ((0, size - crop_h), (0, size - crop_w))
             before = np.pad(before, ((0, 0), *pad), mode="reflect")
             after = np.pad(after, ((0, 0), *pad), mode="reflect")
             mask = np.pad(mask, pad, mode="reflect")
-        before, after, mask = _geometric([before, after, mask], rng)
-        if rng.random() < 0.5:
+            valid = np.pad(valid, pad, mode="reflect")
+        before, after, mask, valid = _geometric([before, after, mask, valid], rng)
+        swapped = rng.random() < 0.5
+        if swapped:
             before, after = after, before
         if rng.random() < aug.identity_probability:
             # A date compared with itself contains no change, whatever the radiometry says.
@@ -132,7 +142,6 @@ class ChangeSampler:
             mask = np.where(mask == IGNORE, IGNORE, 0).astype(np.uint8)
         before = self._radiometric(before)
         after = self._radiometric(after)
-        valid = mask != IGNORE
         if rng.random() < aug.cutout_probability:
             # Teaches the model that blanked pixels (cloud at inference) carry no change evidence.
             cut_h, cut_w = rng.integers(size // 8, size // 2, 2)
@@ -141,12 +150,14 @@ class ChangeSampler:
             valid[cut_top : cut_top + cut_h, cut_left : cut_left + cut_w] = False
             mask[cut_top : cut_top + cut_h, cut_left : cut_left + cut_w] = IGNORE
         if rng.random() < aug.full_scene_stats_probability:
-            centre, scale = self.record_stats[index]
+            stats_before, stats_after = self.record_stats[index]
+            if swapped:
+                stats_before, stats_after = stats_after, stats_before
         else:
-            centre, scale = pair_statistics(before, after, valid)
+            stats_before, stats_after = pair_statistics(before, after, valid, self.normalisation)
         return (
-            apply_statistics(before, centre, scale, valid),
-            apply_statistics(after, centre, scale, valid),
+            apply_statistics(before, *stats_before, valid),
+            apply_statistics(after, *stats_after, valid),
             mask,
         )
 

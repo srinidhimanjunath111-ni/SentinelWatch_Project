@@ -84,6 +84,23 @@ def search(
     return []
 
 
+def fetch_item(item_id: str, attempts: int = 5) -> dict:
+    """Fetch one STAC item by id, with retries."""
+
+    url = f"https://earth-search.aws.element84.com/v1/collections/sentinel-2-l2a/items/{item_id}"
+    delay = 1.0
+    for attempt in range(attempts):
+        try:
+            with urllib.request.urlopen(url, timeout=60) as response:  # noqa: S310
+                return json.load(response)
+        except (urllib.error.URLError, TimeoutError, json.JSONDecodeError):
+            if attempt == attempts - 1:
+                raise
+            time.sleep(delay)
+            delay *= 2
+    raise RuntimeError(f"Could not fetch {item_id}")
+
+
 def reflectance_offset(properties: dict) -> float | None:
     """Offset to add after scaling: 0.0 when known, None when metadata cannot settle it."""
 

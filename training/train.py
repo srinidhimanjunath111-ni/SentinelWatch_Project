@@ -29,11 +29,16 @@ import numpy as np
 import torch
 
 from app.ml.inference import select_device, sliding_window_logits
-from app.ml.preprocessing import BAND_ORDER, NORMALISATION_ID, normalise_pair
+from app.ml.preprocessing import (
+    BAND_ORDER,
+    NORMALISE_PER_DATE,
+    NORMALISE_POOLED,
+    normalise_pair,
+)
 from app.ml.siamese_unet import SiameseUNet
 from data_tools.fetch_oscd import IGNORE, ChangeRecord, load_records
 from training.dataset import ChangeAugment, ChangeSampler, to_reflectance
-from training.metrics import ScoreHistogram
+from training.metrics import ScoreHistogram, average_precision, best_shared_threshold
 
 
 def segmentation_loss(
@@ -64,38 +69,60 @@ def segmentation_loss(
 
 
 def predict_record(
-    model: torch.nn.Module, record: ChangeRecord, device: str, *, batch_size: int = 4
+    model: torch.nn.Module,
+    record: ChangeRecord,
+    device: str,
+    normalisation: str,
+    *,
+    batch_size: int = 4,
 ) -> tuple[np.ndarray, np.ndarray]:
-    """Whole-record sliding-window probability, normalised exactly as live inference is."""
+    """Whole-record probability, normalised as live inference is. Returns (probability, scored).
 
-    valid = record.mask != IGNORE
-    before, after = normalise_pair(to_reflectance(record.before), to_reflectance(record.after), valid)
+    Statistics use every pixel seen clear, labelled or not, because live inference cannot know
+    which pixels a label would have covered. Only labelled clear pixels are scored.
+    """
+
+    seen = record.pixel_valid()
+    before, after = normalise_pair(
+        to_reflectance(record.before), to_reflectance(record.after), seen, normalisation
+    )
     logits = sliding_window_logits(model, (before, after), 1, device=device, batch_size=batch_size)[0]
     probability = torch.sigmoid(torch.from_numpy(logits)).numpy()
-    return probability, valid
+    return probability, seen & (record.mask != IGNORE)
 
 
 def validate(
-    model: torch.nn.Module, records: list[ChangeRecord], device: str, *, batch_size: int = 4
+    model: torch.nn.Module,
+    records: list[ChangeRecord],
+    device: str,
+    normalisation: str,
+    *,
+    batch_size: int = 4,
 ) -> dict:
-    """Validation F1 at the F1-optimal threshold, per source and pooled."""
+    """Mean per-source F1 at one shared threshold, with threshold-free AP per source."""
 
     model.eval()
-    pooled = ScoreHistogram()
     per_source: dict[str, ScoreHistogram] = {}
     for record in records:
-        probability, valid = predict_record(model, record, device, batch_size=batch_size)
-        target = record.mask == 1
-        pooled.update(probability, target, valid)
-        per_source.setdefault(record.source, ScoreHistogram()).update(probability, target, valid)
-    threshold, best = pooled.best_threshold()
-    result = {"threshold": threshold, **best, "per_source": {}}
+        probability, scored = predict_record(
+            model, record, device, normalisation, batch_size=batch_size
+        )
+        per_source.setdefault(record.source, ScoreHistogram()).update(
+            probability, record.mask == 1, scored
+        )
+    threshold, mean_f1 = best_shared_threshold(per_source)
+    result = {"threshold": threshold, "f1": mean_f1, "per_source": {}}
     for source, histogram in per_source.items():
+        best_threshold, best = histogram.best_threshold()
         result["per_source"][source] = {
-            "at_pooled_threshold": histogram.metrics_at(threshold),
-            "best_threshold": histogram.best_threshold()[0],
-            "best_f1": histogram.best_threshold()[1]["f1"],
+            "at_shared_threshold": histogram.metrics_at(threshold),
+            "best_threshold": best_threshold,
+            "best_f1": best["f1"],
+            "average_precision": average_precision(histogram),
         }
+    result["average_precision"] = float(
+        np.mean([v["average_precision"] for v in result["per_source"].values()])
+    )
     return result
 
 
@@ -140,11 +167,12 @@ def build_payload(model, args, step, threshold, val_metrics, device, seconds) ->
             "in_channels": len(BAND_ORDER),
             "base_channels": args.base_channels,
             "dropout": args.dropout,
+            "norm": args.norm,
         },
         "version": args.version,
         "threshold": float(threshold),
         "bands": list(BAND_ORDER),
-        "normalisation": NORMALISATION_ID,
+        "normalisation": args.normalisation_id,
         "datasets": list(args.datasets),
         "step": int(step),
         "device": device,
@@ -168,6 +196,9 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--weight-decay", type=float, default=1e-4)
     parser.add_argument("--dice-weight", type=float, default=0.5)
     parser.add_argument("--max-pos-weight", type=float, default=10.0)
+    parser.add_argument("--norm", choices=("batch", "group"), default="batch")
+    parser.add_argument("--normalisation", choices=("pooled", "per_date"), default="pooled")
+    parser.add_argument("--ema-decay", type=float, default=0.0, help="0 disables weight averaging")
     parser.add_argument("--india-share", type=float, default=0.5, help="Sampling share of India forest")
     parser.add_argument("--init-from", type=Path, default=None, help="Warm-start weights")
     parser.add_argument("--resume", action="store_true")
@@ -178,6 +209,7 @@ def parse_args() -> argparse.Namespace:
 
 def main() -> None:
     args = parse_args()
+    args.normalisation_id = NORMALISE_PER_DATE if args.normalisation == "per_date" else NORMALISE_POOLED
     random.seed(args.seed)
     np.random.seed(args.seed)
     torch.manual_seed(args.seed)
@@ -195,11 +227,27 @@ def main() -> None:
     # Sampler state is not checkpointed; a resumed run takes a different random stream on purpose.
     resume_seed = args.seed + (1 + _last_step(args.run_dir) if args.resume else 0)
     sampler = ChangeSampler(
-        train_records, seed=resume_seed, source_weights=source_weights, augment=ChangeAugment()
+        train_records,
+        seed=resume_seed,
+        source_weights=source_weights,
+        augment=ChangeAugment(),
+        normalisation=args.normalisation_id,
     )
     model = SiameseUNet(
-        in_channels=len(BAND_ORDER), base_channels=args.base_channels, dropout=args.dropout
+        in_channels=len(BAND_ORDER),
+        base_channels=args.base_channels,
+        dropout=args.dropout,
+        norm=args.norm,
     ).to(device)
+    ema_model = None
+    if args.ema_decay > 0:
+        ema_model = SiameseUNet(
+            in_channels=len(BAND_ORDER),
+            base_channels=args.base_channels,
+            dropout=args.dropout,
+            norm=args.norm,
+        ).to(device)
+        ema_model.load_state_dict(model.state_dict())
     optimizer = torch.optim.AdamW(
         model.parameters(), lr=args.learning_rate, weight_decay=args.weight_decay
     )
@@ -265,36 +313,50 @@ def main() -> None:
         scheduler.step()
         window_loss.append(float(loss.detach()))
         done = step + 1
+        if ema_model is not None:
+            with torch.no_grad():
+                # Warm up the average so the first random weights fade quickly.
+                decay = min(args.ema_decay, (1 + done) / (10 + done))
+                source = model.state_dict()
+                for name, value in ema_model.state_dict().items():
+                    if value.dtype.is_floating_point:
+                        value.mul_(decay).add_(source[name].detach(), alpha=1 - decay)
+                    else:
+                        value.copy_(source[name])
         if device == "mps" and done % 25 == 0:
             # The MPS allocator holds freed buffers until told otherwise, which fragments memory.
             torch.mps.empty_cache()
         if done % args.val_every == 0 or done == args.steps:
             seconds = elapsed_before + perf_counter() - started
-            metrics = validate(model, val_records, device)
+            scored_model = ema_model if ema_model is not None else model
+            metrics = validate(scored_model, val_records, device, args.normalisation_id)
             record = {
                 "step": done,
                 "train_loss": float(np.mean(window_loss)),
                 "seconds": seconds,
                 "lr": float(optimizer.param_groups[0]["lr"]),
-                **{k: metrics[k] for k in ("f1", "iou", "precision", "recall", "threshold")},
+                "f1": metrics["f1"],
+                "threshold": metrics["threshold"],
+                "average_precision": metrics["average_precision"],
                 "per_source": metrics["per_source"],
             }
             history.append(record)
             history_path.write_text(json.dumps(history, indent=2), encoding="utf-8")
             per_source = " ".join(
-                f"{s}={v['at_pooled_threshold']['f1']:.3f}" for s, v in metrics["per_source"].items()
+                f"{s}: f1 {v['at_shared_threshold']['f1']:.3f} ap {v['average_precision']:.3f} "
+                f"p {v['at_shared_threshold']['precision']:.2f} r {v['at_shared_threshold']['recall']:.2f}"
+                for s, v in metrics["per_source"].items()
             )
             print(
                 f"step {done} loss {record['train_loss']:.4f} val_f1 {metrics['f1']:.4f} "
-                f"p {metrics['precision']:.3f} r {metrics['recall']:.3f} t {metrics['threshold']:.3f} "
-                f"[{per_source}] {seconds:.0f}s",
+                f"t {metrics['threshold']:.3f} [{per_source}] {seconds:.0f}s",
                 flush=True,
             )
             window_loss = []
             if metrics["f1"] > best_f1:
                 best_f1 = metrics["f1"]
                 payload = build_payload(
-                    model, args, done, metrics["threshold"], metrics, device, seconds
+                    scored_model, args, done, metrics["threshold"], metrics, device, seconds
                 )
                 torch.save(payload, best_path)
             torch.save(
@@ -328,7 +390,10 @@ def main() -> None:
         "pos_fraction": pos_fraction,
         "pos_weight": pos_weight,
         "loss": f"weighted BCE (pos_weight {pos_weight:.2f}) + {args.dice_weight} soft Dice, ignore mask",
-        "normalisation": NORMALISATION_ID,
+        "normalisation": args.normalisation_id,
+        "norm": args.norm,
+        "ema_decay": args.ema_decay,
+        "learning_rate": args.learning_rate,
         "train_samples": _count_by_source(train_records),
         "val_samples": _count_by_source(val_records),
         "train_names": [r.name for r in train_records],

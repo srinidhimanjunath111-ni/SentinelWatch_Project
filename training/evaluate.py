@@ -30,7 +30,7 @@ import torch
 
 from app.ml.inference import LANDCOVER_CLASSES, select_device, sliding_window_logits
 from app.ml.landcover_unet import LandCoverUNet
-from app.ml.preprocessing import normalise_scene
+from app.ml.preprocessing import NORMALISE_POOLED, normalise_scene
 from app.ml.siamese_unet import SiameseUNet
 from data_tools.fetch_oscd import IGNORE, ChangeRecord
 from training import reporting
@@ -68,6 +68,7 @@ def load_change_model(path: Path, device: str) -> tuple[SiameseUNet, dict]:
         in_channels=int(config["in_channels"]),
         base_channels=int(config["base_channels"]),
         dropout=float(config.get("dropout", 0.0)),
+        norm=str(config.get("norm", "batch")),
     )
     model.load_state_dict(payload["model_state"])
     return model.to(device).eval(), payload
@@ -79,15 +80,17 @@ def evaluate_change(args: argparse.Namespace) -> None:
     device = args.device or select_device()
     model, payload = load_change_model(args.checkpoint, device)
     threshold = float(payload["threshold"])
+    normalisation = str(payload.get("normalisation", NORMALISE_POOLED))
     records: list[ChangeRecord] = load_change_records([args.dataset], "test")
     pooled = [0, 0, 0, 0]
     per_item: dict[str, dict] = {}
     sample_rows = []
     started = perf_counter()
     for record in records:
-        probability, valid = predict_record(model, record, device)
+        probability, valid = predict_record(model, record, device, normalisation)
         prediction = probability >= threshold
         truth = record.mask == 1
+        shown_truth = np.where(valid, record.mask, IGNORE)
         tp = int((prediction & truth & valid).sum())
         fp = int((prediction & ~truth & valid).sum())
         tn = int((~prediction & ~truth & valid).sum())
@@ -102,7 +105,7 @@ def evaluate_change(args: argparse.Namespace) -> None:
                     "name": record.name,
                     "before": reporting.true_colour(to_reflectance(record.before)),
                     "after": reporting.true_colour(to_reflectance(record.after)),
-                    "truth": record.mask,
+                    "truth": shown_truth,
                     "prediction": prediction,
                     "f1": per_item[record.name]["f1"],
                 }

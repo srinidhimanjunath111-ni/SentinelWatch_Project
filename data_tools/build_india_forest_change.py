@@ -279,7 +279,13 @@ def build_pair(candidate: dict, out_dir: Path) -> dict | None:
             labels[~valid] = IGNORE
             if (labels == 0).sum() + (labels == 1).sum() < 0.2 * labels.size:
                 return None
-            np.savez_compressed(out_dir / f"{candidate['id']}.npz", before=before[0], after=after[0], mask=labels)
+            np.savez_compressed(
+                out_dir / f"{candidate['id']}.npz",
+                before=before[0],
+                after=after[0],
+                mask=labels,
+                valid=valid,
+            )
             return {
                 **candidate,
                 "before_scene": before_item["id"],
@@ -393,6 +399,46 @@ def summarise(cache_dir: Path = CACHE_DIR) -> dict:
     return summary
 
 
+def backfill_valid(cache_dir: Path = CACHE_DIR, workers: int = 12) -> None:
+    """Add a `valid` array to chips built before it was stored, by re-reading SCL for both dates."""
+
+    import rasterio
+    from rasterio.enums import Resampling
+    from rasterio.windows import from_bounds
+
+    from data_tools.s2_stac import INVALID_SCL, fetch_item
+
+    def read_clear(item: dict, transform) -> np.ndarray:
+        with rasterio.open(item["assets"]["scl"]["href"]) as dataset:
+            window = from_bounds(
+                transform.c,
+                transform.f + transform.e * CHIP,
+                transform.c + transform.a * CHIP,
+                transform.f,
+                dataset.transform,
+            )
+            scl = dataset.read(
+                1, window=window, out_shape=(CHIP, CHIP), boundless=True, fill_value=0, resampling=Resampling.nearest
+            )
+        return ~np.isin(scl, INVALID_SCL)
+
+    def work(entry: dict) -> None:
+        path = cache_dir / "chips" / f"{entry['id']}.npz"
+        with np.load(path, allow_pickle=False) as data:
+            if "valid" in data.files:
+                return
+            arrays = {key: data[key] for key in data.files}
+        before_item = fetch_item(entry["before_scene"])
+        after_item = fetch_item(entry["after_scene"])
+        _, transform = _grid(before_item, entry["lat"], entry["lon"])
+        valid = read_clear(before_item, transform) & read_clear(after_item, transform)
+        valid &= (arrays["before"] > 0).all(axis=0) & (arrays["after"] > 0).all(axis=0)
+        np.savez_compressed(path, valid=valid, **arrays)
+
+    with ThreadPoolExecutor(workers) as pool:
+        list(pool.map(work, load_manifest(cache_dir)))
+
+
 def load_manifest(cache_dir: Path = CACHE_DIR) -> list[dict]:
     lines = (cache_dir / "manifest.jsonl").read_text(encoding="utf-8").splitlines()
     return [json.loads(line) for line in lines if line]
@@ -405,7 +451,9 @@ def load_records(split: str, cache_dir: Path = CACHE_DIR) -> list[ChangeRecord]:
             continue
         with np.load(cache_dir / "chips" / f"{entry['id']}.npz", allow_pickle=False) as data:
             records.append(
-                ChangeRecord(entry["id"], "india_forest", data["before"], data["after"], data["mask"])
+                ChangeRecord(
+                    entry["id"], "india_forest", data["before"], data["after"], data["mask"], data["valid"]
+                )
             )
     return records
 
@@ -416,8 +464,12 @@ def main() -> None:
     parser.add_argument("--max-minutes", type=float, default=35.0)
     parser.add_argument("--workers", type=int, default=12)
     parser.add_argument("--seed", type=int, default=2024)
+    parser.add_argument("--backfill-valid", action="store_true")
     args = parser.parse_args()
     args.cache_dir.mkdir(parents=True, exist_ok=True)
+    if args.backfill_valid:
+        backfill_valid(args.cache_dir, args.workers)
+        return
     run(args)
 
 

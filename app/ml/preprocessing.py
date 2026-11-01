@@ -14,6 +14,11 @@ date would be re-centred on itself. Pooling keeps the before/after contrast that
 Median and IQR are used rather than mean and standard deviation so that residual cloud, glint and
 the changed pixels themselves barely move the statistics.
 
+`NORMALISE_PER_DATE` is the alternative: each date is standardised on its own statistics, measured
+over the pixels valid in both dates. It also cancels the date-to-date atmospheric and illumination
+differences, at the cost of erasing a change that covers most of an AOI, because the median moves
+with it. A change model records which mode it was trained with, and inference follows that record.
+
 `SCALE_FLOOR` stops a uniform AOI (open water, say) from amplifying sensor noise into apparent
 change. It is expressed in reflectance units, so it behaves the same across levels.
 
@@ -31,7 +36,11 @@ BAND_ORDER = ("B02", "B03", "B04", "B08", "B11", "B12")
 SCALE_FLOOR = 0.01
 CLIP = 6.0
 _MAX_STAT_SAMPLES = 200_000
-NORMALISATION_ID = "pair_band_median_iqr_v1"
+# Pooled: one centre and scale per band over both dates (change model v1).
+NORMALISE_POOLED = "pair_band_median_iqr_v1"
+# Per date: each date gets its own centre and scale, from the pixels valid in both dates.
+NORMALISE_PER_DATE = "date_band_median_iqr_v1"
+NORMALISATION_MODES = (NORMALISE_POOLED, NORMALISE_PER_DATE)
 
 
 def finite_valid(valid: np.ndarray, *stacks: np.ndarray) -> np.ndarray:
@@ -43,12 +52,10 @@ def finite_valid(valid: np.ndarray, *stacks: np.ndarray) -> np.ndarray:
     return mask
 
 
-def pair_statistics(
-    before: np.ndarray, after: np.ndarray, valid: np.ndarray
-) -> tuple[np.ndarray, np.ndarray]:
-    """Return per-band (centre, scale), each shaped [C,1,1], pooled over both dates."""
+def _robust_statistics(stacks: tuple[np.ndarray, ...], valid: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
+    """Per-band median and IQR-derived scale, each [C,1,1], over the valid pixels of `stacks`."""
 
-    channels = before.shape[0]
+    channels = stacks[0].shape[0]
     centre = np.zeros((channels, 1, 1), dtype=np.float32)
     scale = np.full((channels, 1, 1), 1.0, dtype=np.float32)
     count = int(valid.sum())
@@ -56,12 +63,25 @@ def pair_statistics(
         return centre, scale
     step = max(1, count // _MAX_STAT_SAMPLES)
     for band in range(channels):
-        samples = np.concatenate((before[band][valid][::step], after[band][valid][::step]))
+        samples = np.concatenate([stack[band][valid][::step] for stack in stacks])
         low, mid, high = np.percentile(samples, (25, 50, 75))
         centre[band] = mid
         # For a normal distribution IQR = 1.349 sigma, so this estimates a standard deviation.
         scale[band] = max((high - low) / 1.349, SCALE_FLOOR)
     return centre, scale
+
+
+def pair_statistics(
+    before: np.ndarray, after: np.ndarray, valid: np.ndarray, mode: str = NORMALISE_POOLED
+) -> tuple[tuple[np.ndarray, np.ndarray], tuple[np.ndarray, np.ndarray]]:
+    """Return ((before centre, before scale), (after centre, after scale)), each [C,1,1]."""
+
+    if mode == NORMALISE_POOLED:
+        shared = _robust_statistics((before, after), valid)
+        return shared, shared
+    if mode == NORMALISE_PER_DATE:
+        return _robust_statistics((before,), valid), _robust_statistics((after,), valid)
+    raise ValueError(f"Unknown normalisation {mode!r}")
 
 
 def apply_statistics(
@@ -75,14 +95,14 @@ def apply_statistics(
 
 
 def normalise_pair(
-    before: np.ndarray, after: np.ndarray, valid: np.ndarray
+    before: np.ndarray, after: np.ndarray, valid: np.ndarray, mode: str = NORMALISE_POOLED
 ) -> tuple[np.ndarray, np.ndarray]:
     """Per-pair per-band standardisation for reflectance [C,H,W] inputs."""
 
-    centre, scale = pair_statistics(before, after, valid)
+    stats_before, stats_after = pair_statistics(before, after, valid, mode)
     return (
-        apply_statistics(before, centre, scale, valid),
-        apply_statistics(after, centre, scale, valid),
+        apply_statistics(before, *stats_before, valid),
+        apply_statistics(after, *stats_after, valid),
     )
 
 

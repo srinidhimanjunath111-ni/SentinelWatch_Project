@@ -66,6 +66,44 @@ class ScoreHistogram:
         return best_threshold, best
 
 
+def average_precision(histogram: ScoreHistogram) -> float:
+    """Threshold-free area under the precision-recall curve, stepped over histogram bins."""
+
+    total_positive = int(histogram.positive.sum())
+    if total_positive == 0:
+        return 0.0
+    tp = fp = 0
+    area = previous_recall = 0.0
+    for index in range(histogram.bins - 1, -1, -1):
+        tp += int(histogram.positive[index])
+        fp += int(histogram.negative[index])
+        if tp + fp == 0:
+            continue
+        recall = tp / total_positive
+        area += (recall - previous_recall) * (tp / (tp + fp))
+        previous_recall = recall
+    return area
+
+
+def best_shared_threshold(
+    histograms: dict[str, ScoreHistogram], low: float = 0.05, high: float = 0.95
+) -> tuple[float, float]:
+    """The one threshold maximising mean F1 across sources. Call on validation data only.
+
+    Averaging per source stops the source with most labelled pixels from setting the threshold
+    alone, which matters because a deployed model has exactly one.
+    """
+
+    bins = next(iter(histograms.values())).bins
+    best_threshold, best_score = 0.5, -1.0
+    for cut in range(int(low * bins), int(high * bins) + 1):
+        threshold = cut / bins
+        score = float(np.mean([h.metrics_at(threshold)["f1"] for h in histograms.values()]))
+        if score > best_score:
+            best_threshold, best_score = threshold, score
+    return best_threshold, best_score
+
+
 def multiclass_metrics(confusion: np.ndarray, classes: tuple[str, ...]) -> dict:
     """Per-class and macro metrics from a confusion matrix with rows = truth, columns = prediction."""
 

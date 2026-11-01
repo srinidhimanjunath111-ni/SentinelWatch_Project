@@ -19,7 +19,14 @@ from pathlib import Path
 
 import numpy as np
 
-from app.ml.preprocessing import BAND_ORDER, finite_valid, normalise_pair, normalise_scene
+from app.ml.preprocessing import (
+    BAND_ORDER,
+    NORMALISATION_MODES,
+    NORMALISE_POOLED,
+    finite_valid,
+    normalise_pair,
+    normalise_scene,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -171,6 +178,7 @@ class ChangeDetector:
         self.available = False
         self.device = "cpu"
         self.threshold = 0.5
+        self.normalisation = NORMALISE_POOLED
         self.version: str | None = None
         self.unavailable_reason: str | None = None
         self._model = None
@@ -193,9 +201,14 @@ class ChangeDetector:
                 in_channels=int(config["in_channels"]),
                 base_channels=int(config["base_channels"]),
                 dropout=float(config.get("dropout", 0.0)),
+                norm=str(config.get("norm", "batch")),
             )
             model.load_state_dict(payload["model_state"])
             model.to(device).eval()
+            normalisation = str(payload.get("normalisation", NORMALISE_POOLED))
+            if normalisation not in NORMALISATION_MODES:
+                raise ValueError(f"Unknown normalisation {normalisation!r}")
+            self.normalisation = normalisation
             self.threshold = float(payload["threshold"])
             self.version = str(payload.get("version", "unknown"))
             self.device = device
@@ -227,6 +240,7 @@ class ChangeDetector:
             np.nan_to_num(before.astype(np.float32)),
             np.nan_to_num(after.astype(np.float32)),
             mask,
+            self.normalisation,
         )
         # MPS and BatchNorm eval are read-only but not documented as thread-safe; one forward at a
         # time keeps concurrent scheduler workers from contending for the same device memory.

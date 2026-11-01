@@ -54,13 +54,21 @@ MAX_EXTRACTED_BYTES = 8 * 1024**3
 
 @dataclass
 class ChangeRecord:
-    """One co-registered pair. before/after are uint16 [6,H,W]; mask uint8 0/1/255 (ignore)."""
+    """One co-registered pair. before/after are uint16 [6,H,W]; mask uint8 0/1/255 (ignore).
+
+    `valid` marks pixels actually seen clear in both dates. It differs from `mask != 255`: land
+    with no label (outside forest, say) is still seen, and live normalisation statistics include it.
+    """
 
     name: str
     source: str
     before: np.ndarray
     after: np.ndarray
     mask: np.ndarray
+    valid: np.ndarray | None = None
+
+    def pixel_valid(self) -> np.ndarray:
+        return self.valid if self.valid is not None else self.mask != IGNORE
 
 
 def _download(url: str, destination: Path) -> None:

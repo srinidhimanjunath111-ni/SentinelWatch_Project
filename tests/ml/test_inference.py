@@ -25,7 +25,7 @@ from app.ml.inference import (  # noqa: E402
     get_landcover_classifier,
 )
 from app.ml.landcover_unet import LandCoverUNet  # noqa: E402
-from app.ml.preprocessing import normalise_pair  # noqa: E402
+from app.ml.preprocessing import NORMALISE_PER_DATE, normalise_pair  # noqa: E402
 from app.ml.siamese_unet import SiameseUNet  # noqa: E402
 from data_tools.fetch_oscd import _safe_member_path  # noqa: E402
 from data_tools.s2_stac import reflectance_offset, resolve_ambiguous_offset  # noqa: E402
@@ -258,6 +258,45 @@ def test_pair_normalisation_keeps_scene_wide_change():
     before = _scene(64, 64)
     normalised_before, normalised_after = normalise_pair(before, before + 0.2, np.ones((64, 64), dtype=bool))
     assert (normalised_after - normalised_before).mean() > 0.5
+
+
+def test_per_date_normalisation_cancels_date_radiometry():
+    before = _scene(128, 128)
+    valid = np.ones((128, 128), dtype=bool)
+    gain = np.array([0.8, 0.9, 1.1, 1.0, 1.2, 0.7], dtype=np.float32).reshape(-1, 1, 1)
+    first, second = normalise_pair(before, before * gain + 0.05, valid, NORMALISE_PER_DATE)
+    np.testing.assert_allclose(first, second, atol=1e-3)
+
+
+def test_detector_follows_checkpoint_normalisation(tmp_path):
+    path = tmp_path / "per_date.pt"
+    torch.save(
+        {
+            "model_state": SiameseUNet(6, BASE, 0.0, "group").state_dict(),
+            "config": {"in_channels": 6, "base_channels": BASE, "dropout": 0.0, "norm": "group"},
+            "threshold": 0.5,
+            "normalisation": NORMALISE_PER_DATE,
+        },
+        path,
+    )
+    detector = ChangeDetector(path)
+    assert detector.available and detector.normalisation == NORMALISE_PER_DATE
+    output = detector.predict(_scene(70, 70), _scene(70, 70, 1), np.ones((70, 70), dtype=bool))
+    assert output.shape == (70, 70)
+
+
+def test_unknown_normalisation_is_refused(tmp_path):
+    path = tmp_path / "unknown.pt"
+    torch.save(
+        {
+            "model_state": SiameseUNet(6, BASE).state_dict(),
+            "config": {"in_channels": 6, "base_channels": BASE},
+            "threshold": 0.5,
+            "normalisation": "something_else",
+        },
+        path,
+    )
+    assert ChangeDetector(path).available is False
 
 
 def test_zip_traversal_is_rejected(tmp_path):
