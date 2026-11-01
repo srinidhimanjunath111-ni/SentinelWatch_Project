@@ -12,7 +12,7 @@ from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
 from sqlalchemy import func
 from sqlalchemy.orm import Session
 
-from app.database import get_db
+from app.database import SessionLocal, get_db
 from app.models import (
     Alert,
     AnalysisRecord,
@@ -34,7 +34,7 @@ from app.schemas import (
     ReplayRequest,
 )
 from app.services.audit import record_audit
-from app.services.monitoring import queue_monitoring_run
+from app.services.monitoring import _known_scenes, queue_monitoring_run
 from app.services.payloads import area_payload, load_json, run_payload
 from app.services.scheduler import ACTIVE_RUN_STATES, scheduler
 from app.services.system import models_payload, overview_payload, system_status_payload
@@ -322,12 +322,16 @@ def _replay_dates(area: MonitoringArea, start: date, end: date, max_scenes: int)
     def nearest(target: date) -> str | None:
         low = max(start, target - timedelta(days=radius))
         high = min(end, target + timedelta(days=radius))
-        scenes = chain.search_scenes(
-            geometry,
-            datetime(low.year, low.month, low.day),
-            datetime(high.year, high.month, high.day, 23, 59, 59),
-            limit=100,
-        )
+        low_time = datetime(low.year, low.month, low.day)
+        high_time = datetime(high.year, high.month, high.day, 23, 59, 59)
+        try:
+            scenes = chain.search_scenes(geometry, low_time, high_time, limit=100)
+        except ProviderError:
+            # Replay may use previously catalogued real scenes; live checks never do this.
+            with SessionLocal() as cached_db:
+                scenes = _known_scenes(cached_db, area, low_time, high_time)
+            if not scenes:
+                raise
         usable = [
             scene
             for scene in scenes

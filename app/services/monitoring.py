@@ -1450,7 +1450,7 @@ def execute_monitoring_run(run_id: str) -> bool:
                 error_detail=str(error),
             )
     except ProviderError as error:
-        _fail(db, run, name, "PROVIDER_ERROR", "Every imagery provider failed for this check.", error)
+        _fail(db, run, name, "PROVIDER_ERROR", "Imagery providers unreachable; will retry at the next check.", error)
         logger.warning("Run %s: provider failure: %s", run_id, error)
     except Exception as error:  # Keep a failed run auditable without crashing the worker.
         logger.exception("Run %s failed unexpectedly", run_id)

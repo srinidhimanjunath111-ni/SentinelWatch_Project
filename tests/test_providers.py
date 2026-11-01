@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import multiprocessing
+import time
 from datetime import datetime
 
 import httpx
@@ -303,3 +305,59 @@ def test_grid_is_stable_snapped_and_north_up():
 def test_oversized_aoi_is_refused_with_a_clear_error_before_any_request():
     with pytest.raises(AOITooLargeError, match="maximum"):
         build_grid(bbox_polygon([77.0, 28.0, 77.5, 28.5]))
+
+
+def test_wall_clock_budget_terminates_the_remote_worker():
+    from app.satellite.fetch import FetchDeadlineExceeded, bounded_call
+
+    before = {process.pid for process in multiprocessing.active_children()}
+    started = time.monotonic()
+    with pytest.raises(FetchDeadlineExceeded, match="wall-clock budget"):
+        bounded_call(time.sleep, (30,), 0.25)
+    assert time.monotonic() - started < 3
+    assert {process.pid for process in multiprocessing.active_children()} == before
+
+
+def test_remote_worker_returns_a_complete_array():
+    from app.satellite.fetch import bounded_call
+
+    result = bounded_call(np.ones, ((6, 10, 10),), 10)
+    np.testing.assert_array_equal(result, np.ones((6, 10, 10)))
+
+
+def test_non_tiff_response_retries_only_the_failed_band(monkeypatch):
+    from collections import Counter
+
+    from rasterio.errors import RasterioIOError
+
+    calls = Counter()
+
+    def read(href, grid, **kwargs):
+        band = href.rsplit("/", 1)[-1]
+        calls[band] += 1
+        if band == "red.tif" and calls[band] == 1:
+            raise RasterioIOError("not recognized as being in a supported file format")
+        return np.full(grid.shape, 500, dtype=np.uint16)
+
+    monkeypatch.setattr("app.satellite.stac.read_warped", read)
+    provider = EarthSearchProvider()
+    bands = provider.read_bands(provider.parse_feature(_feature()), build_grid(bbox_polygon(BBOX)))
+    assert np.allclose(bands, 0.05)
+    assert calls["red.tif"] == 2
+    assert all(count == 1 for band, count in calls.items() if band != "red.tif")
+
+
+def test_partial_or_invalid_windows_never_enter_the_cache(monkeypatch):
+    day = days_ago(5)
+    provider = FakeProvider({day: Scene(FOREST)})
+    chain = ProviderChain([provider])
+    grid = build_grid(bbox_polygon(BBOX))
+    scene = provider._candidate(day)
+    monkeypatch.setattr(provider, "read_bands", lambda *args: np.full((6, *grid.shape), np.nan))
+    with pytest.raises(ProviderError, match="invalid reflectance"):
+        chain.read_bands(scene, grid)
+    assert not chain._cache_path(scene, grid, ".bands.tif").exists()
+    monkeypatch.setattr(provider, "read_bands", lambda *args: np.ones((5, *grid.shape)))
+    with pytest.raises(ProviderError, match="invalid reflectance"):
+        chain.read_bands(scene, grid)
+    assert not chain._cache_path(scene, grid, ".bands.tif").exists()

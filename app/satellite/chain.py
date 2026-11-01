@@ -68,10 +68,11 @@ class ProviderHealth:
 
 
 class ProviderChain:
-    def __init__(self, providers: list[ImageryProvider]):
+    def __init__(self, providers: list[ImageryProvider], *, isolate_fetches: bool = True):
         if not providers:
             raise ValueError("At least one imagery provider is required.")
         self.providers = providers
+        self.isolate_fetches = isolate_fetches
         self._health = {
             provider.name: ProviderHealth(
                 provider.name, getattr(provider, "requires_credentials", False)
@@ -134,11 +135,37 @@ class ProviderChain:
         with self._lock:
             return not any(self._health[p.name].healthy for p in self.providers)
 
+    def _can_isolate(self) -> bool:
+        return self.isolate_fetches and all(_provider_spec(p) is not None for p in self.providers)
+
+    def _remote(self, operation: str, args: tuple):
+        from app.satellite.fetch import FetchDeadlineExceeded, bounded_call
+
+        providers = self._ordered()
+        specs = [_provider_spec(provider) for provider in providers]
+        try:
+            result, error, health = bounded_call(
+                _remote_operation, (specs, operation, args, self._health), settings.imagery_fetch_budget_seconds
+            )
+        except FetchDeadlineExceeded as error:
+            for provider in providers:
+                self._failed(provider, error)
+            raise
+        with self._lock:
+            for name, state in health.items():
+                if state.last_success_at is not None or state.last_error_at is not None:
+                    self._health[name] = state
+        if error:
+            raise ProviderError(error)
+        return result
+
     # Catalogue -------------------------------------------------------------------------
 
     def search_scenes(
         self, geometry: dict[str, Any], start: datetime, end: datetime, limit: int = 300
     ) -> list[AcquisitionCandidate]:
+        if self._can_isolate():
+            return self._remote("search", (geometry, start, end, limit))
         errors: list[str] = []
         for provider in self._ordered():
             try:
@@ -172,7 +199,9 @@ class ProviderChain:
             None,
         )
 
-    def _read_with_failover(self, scene: AcquisitionCandidate, grid: AOIGrid, what: str, reader):
+    def _read_with_failover(self, scene: AcquisitionCandidate, grid: AOIGrid, what: str):
+        if self._can_isolate():
+            return self._remote(what, (scene, grid))
         errors: list[str] = []
         # The scene's own provider goes first: its catalogue record is already in hand.
         ordered = sorted(self._ordered(), key=lambda p: p.name != scene.provider)
@@ -182,7 +211,7 @@ class ProviderChain:
                 if local is None:
                     errors.append(f"{provider.name}: scene not in catalogue")
                     continue
-                result = reader(provider, local)
+                result = getattr(provider, "read_scl" if what == "SCL" else "read_bands")(local, grid)
             except AmbiguousRadiometry as error:
                 logger.info("Trying the next provider: %s", error)
                 errors.append(f"{provider.name}: {error}")
@@ -207,8 +236,10 @@ class ProviderChain:
         if cached is not None:
             return cached[0].astype(np.uint8)
         scl = self._read_with_failover(
-            scene, grid, "SCL", lambda provider, local: provider.read_scl(local, grid)
+            scene, grid, "SCL"
         )
+        if scl.shape != grid.shape or not np.isfinite(scl).all() or not np.isin(scl, range(12)).all():
+            raise ProviderError("Provider returned an invalid SCL window; nothing was cached.")
         _write_cached(path, scl[np.newaxis].astype(np.uint8), grid)
         return scl
 
@@ -218,11 +249,51 @@ class ProviderChain:
         if cached is not None:
             return (cached.astype(np.float32) / _REFLECTANCE_SCALE).astype(np.float32)
         bands = self._read_with_failover(
-            scene, grid, "bands", lambda provider, local: provider.read_bands(local, grid)
+            scene, grid, "bands"
         )
+        if (bands.shape != (6, *grid.shape) or not np.isfinite(bands).all()
+                or (bands < 0).any() or (bands > 1).any()):
+            raise ProviderError("Provider returned an invalid reflectance window; nothing was cached.")
         encoded = np.clip(np.rint(bands * _REFLECTANCE_SCALE), 0, 65535).astype(np.uint16)
         _write_cached(path, encoded, grid)
         return bands
+
+
+def _provider_spec(provider):
+    from app.satellite.copernicus import CopernicusDataSpaceProvider
+    from app.satellite.stac import EarthSearchProvider, PlanetaryComputerProvider
+
+    if type(provider) in (EarthSearchProvider, PlanetaryComputerProvider):
+        return type(provider).__name__, {
+            "stac_url": provider.stac_url, "timeout_seconds": provider.timeout_seconds,
+        }
+    if type(provider) is CopernicusDataSpaceProvider:
+        return type(provider).__name__, {
+            key: getattr(provider, key) for key in (
+                "stac_url", "process_url", "token_url", "client_id", "client_secret", "timeout_seconds"
+            )
+        }
+    return None
+
+
+def _remote_operation(specs, operation, args, health):
+    from app.satellite.copernicus import CopernicusDataSpaceProvider
+    from app.satellite.stac import EarthSearchProvider, PlanetaryComputerProvider
+
+    classes = {cls.__name__: cls for cls in (
+        EarthSearchProvider, PlanetaryComputerProvider, CopernicusDataSpaceProvider
+    )}
+    chain = ProviderChain([classes[name](**kwargs) for name, kwargs in specs], isolate_fetches=False)
+    chain._health = {p.name: health[p.name] for p in chain.providers}
+    try:
+        if operation == "search":
+            result = chain.search_scenes(*args)
+        else:
+            scene, grid = args
+            result = chain._read_with_failover(scene, grid, operation)
+        return result, None, chain._health
+    except ProviderError as error:
+        return None, str(error), chain._health
 
 
 def _read_cached(path: Path, grid: AOIGrid) -> np.ndarray | None:

@@ -237,6 +237,7 @@ class MonitoringScheduler:
             elif run.status not in ("FAILED", *ACTIVE_RUN_STATES):
                 self.provider_failures = 0
                 self.backoff_until = None
+                self.last_error = None
         finally:
             db.close()
 

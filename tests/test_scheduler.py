@@ -207,7 +207,7 @@ def test_provider_failure_backs_off_ticks_and_status_reports_it():
 def test_backoff_is_capped_and_clears_on_success():
     area = make_area()
     failed = queue(area)
-    _set_status(failed, status="FAILED", error_code="PROVIDER_ERROR")
+    _set_status(failed, status="FAILED", error_code="PROVIDER_ERROR", error_detail="outage")
     scheduler = MonitoringScheduler(workers=1, execute=lambda _run_id: None)
     for _ in range(30):
         scheduler._record_outcome(failed)
@@ -217,6 +217,7 @@ def test_backoff_is_capped_and_clears_on_success():
     _set_status(good, status="COMPLETED")
     scheduler._record_outcome(good)
     assert scheduler.backoff_until is None and scheduler.provider_failures == 0
+    assert scheduler.last_error is None
 
 
 def test_graceful_stop_returns_promptly_with_no_work():

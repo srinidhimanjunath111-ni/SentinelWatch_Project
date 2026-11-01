@@ -932,3 +932,53 @@ def test_short_pair_browning_keeps_evidence_without_dispatch_even_with_wrong_bui
     assert all(json.loads(f.evidence_json)["short_pair_browning"] for f in findings)
     assert _rows(Alert) == []
     assert _rows(NotificationAttempt) == []
+
+
+def test_imagery_outage_keeps_scene_eligible_for_a_successful_retry(monkeypatch):
+    from app.satellite.provider import ProviderError
+
+    provider = install({AFTER: Scene(FOREST, BARE), BEFORE: Scene(FOREST), REFERENCE: Scene(FOREST)})
+    original = provider.read_bands
+    monkeypatch.setattr(provider, "read_bands", lambda *args: (_ for _ in ()).throw(ProviderError("outage")))
+    area = make_area()
+    failed = _run(area)
+    assert failed.status == "FAILED" and failed.error_code == "PROVIDER_ERROR"
+    assert "will retry at the next check" in failed.message
+    assert _rows(Alert) == [] and _rows(AnalysisRecord) == []
+    assert all(link.scene_status != "ANALYSIS_ERROR" for link in _rows(AOIAcquisition))
+    monkeypatch.setattr(provider, "read_bands", original)
+    retried = _run(area)
+    assert retried.status == "COMPLETED", retried.message
+    assert _rows(Alert) and _rows(AnalysisRecord)
+
+
+def test_cached_archive_pair_and_evidence_work_during_a_provider_outage():
+    from fastapi.testclient import TestClient
+
+    from app.main import app
+
+    provider = install({AFTER: Scene(FOREST, BARE), BEFORE: Scene(FOREST), REFERENCE: Scene(FOREST)})
+    area = make_area()
+    first = _run(area)
+    assert first.status == "COMPLETED"
+    provider.fail_search = provider.fail_reads = True
+    with TestClient(app) as client:
+        case = client.get("/api/cases").json()[0]
+        detail = client.get("/api/cases/" + case["id"]).json()
+        for url in detail["images"].values():
+            assert client.get(url).status_code == 200
+        report = client.get("/api/cases/" + case["id"] + "/report")
+        assert report.status_code == 200 and report.content.startswith(b"%PDF-")
+        response = client.post(f"/api/areas/{area}/replay", json={
+            "start_date": BEFORE.isoformat(), "end_date": AFTER.isoformat(), "max_scenes": 2,
+        })
+        assert response.status_code == 202, response.text
+        import time
+        deadline = time.monotonic() + 10
+        while time.monotonic() < deadline:
+            runs = [client.get("/api/monitoring-runs/" + rid).json() for rid in response.json()["run_ids"]]
+            if all(run["status"] not in ("QUEUED", "RUNNING") for run in runs):
+                break
+            time.sleep(0.02)
+        assert [run["status"] for run in runs] == ["REPLAY_BASELINE", "COMPLETED"]
+        assert all(run["error_code"] is None for run in runs)

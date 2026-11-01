@@ -44,6 +44,7 @@ class Settings:
     planetary_computer_sas_url = os.getenv(
         "PLANETARY_COMPUTER_SAS_URL", "https://planetarycomputer.microsoft.com/api/sas/v1"
     )
+    imagery_fetch_budget_seconds = max(0.1, float(os.getenv("IMAGERY_FETCH_BUDGET_SECONDS", "120")))
     provider_timeout_seconds = float(os.getenv("PROVIDER_TIMEOUT_SECONDS", "30"))
     provider_retries = int(os.getenv("PROVIDER_RETRIES", "3"))
     provider_backoff_seconds = float(os.getenv("PROVIDER_BACKOFF_SECONDS", "1.5"))
