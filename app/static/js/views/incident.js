@@ -588,7 +588,7 @@ export async function mountIncident(root, params) {
   function mountSmallMap(host) {
     if (!L()) return;
     try {
-      smallMap = createMap(host, { labels: true, zoomControl: true, scrollWheelZoom: false });
+      smallMap = createMap(host, { zoomControl: true, scrollWheelZoom: false });
     } catch {
       return;
     }
