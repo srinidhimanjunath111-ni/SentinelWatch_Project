@@ -58,6 +58,8 @@ def export_snapshot(destination: Path | None = None) -> dict:
             "UPDATE monitoring_runs SET status = 'FAILED', stage = 'FAILED', error_code = 'NOT_IN_SNAPSHOT', "
             "message = 'Interrupted when this snapshot was taken.' WHERE status IN ('QUEUED', 'RUNNING')"
         )
+        # Outbox bodies do not travel; retain delivery history without dangling download links.
+        copy.execute("UPDATE notification_attempts SET file_path = NULL WHERE file_path IS NOT NULL")
         copy.commit()
         counts = {
             table: copy.execute(f'SELECT COUNT(*) FROM "{table}"').fetchone()[0]
@@ -119,6 +121,12 @@ def restore_snapshot(source: Path | None = None) -> bool:
             connection.execute(
                 f'INSERT OR IGNORE INTO main."{name}" ({columns}) SELECT {columns} FROM snapshot."{name}"'
             )
+        # Evidence dates remain historical. Poll live catalogues immediately on this install,
+        # rather than inheriting a deadline from the machine that exported the snapshot.
+        connection.execute(
+            "UPDATE monitoring_areas SET next_check_at = ? WHERE status = 'ACTIVE'",
+            (utcnow().isoformat(" "),),
+        )
         connection.commit()
         connection.execute("DETACH DATABASE snapshot")
     finally:

@@ -5,15 +5,17 @@ from __future__ import annotations
 import json
 import shutil
 import sqlite3
+from datetime import timedelta
 
 import pytest
 
 from app.config import settings
 from app.database import SessionLocal, make_engine
-from app.models import Alert, AuthorisedZone, Case, Finding, MonitoringArea
+from app.models import Alert, AuthorisedZone, Case, Finding, MonitoringArea, NotificationAttempt
 from app.seed_sites import ZONES_FILE, apply_seed_files, load_sites, seed_sites
 from app.services.monitoring import execute_monitoring_run
 from app.snapshot import export_snapshot, restore_snapshot, restore_snapshot_if_empty
+from app.timeutil import utcnow
 from tests.fakes import (
     BARE,
     FOREST,
@@ -291,7 +293,13 @@ def _analysed(monkeypatch):
 
 
 def test_snapshot_exports_jpeg_only_and_restores_into_an_empty_database(monkeypatch, tmp_path):
-    _analysed(monkeypatch)
+    area_id = _analysed(monkeypatch)
+    with SessionLocal() as db:
+        db.get(MonitoringArea, area_id).next_check_at = utcnow() - timedelta(days=90)
+        # The badge and all historical dates must survive the move.
+        db.query(Case).update({Case.origin: "archive_replay"})
+        db.query(Alert).update({Alert.origin: "archive_replay"})
+        db.commit()
     snapshot = tmp_path / "snap"
     manifest = export_snapshot(snapshot)
     assert manifest["counts"]["cases"] == 1 and manifest["counts"]["alerts"] == 1
@@ -321,6 +329,10 @@ def test_snapshot_exports_jpeg_only_and_restores_into_an_empty_database(monkeypa
         try:
             assert db.query(Case).count() == 1
             assert db.query(Alert).count() == 1
+            assert db.query(Alert).first().origin == "archive_replay"
+            assert db.query(Case).first().origin == "archive_replay"
+            assert abs((db.get(MonitoringArea, area_id).next_check_at - utcnow()).total_seconds()) < 10
+            assert all(item.file_path is None for item in db.query(NotificationAttempt).all())
             assert db.query(Finding).count() >= 1
             image = db.query(Case).first().before_image
         finally:
