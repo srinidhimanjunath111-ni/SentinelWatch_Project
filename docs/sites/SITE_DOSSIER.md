@@ -17,6 +17,7 @@ Coordinates were refined from the inspected imagery; they are monitoring AOIs, n
 | Site | Expected verdict | Replay | Replay clear dates | Recent AOI-clear / tile-screened |
 |---|---|---|---:|---:|
 | Noida International Airport, Jewar | AUTHORISED_ACTIVITY | 2021-03-20 → 2025-03-24 | 153 | 7 / 7 |
+| Navi Mumbai International Airport, Ulwe | AUTHORISED_ACTIVITY | 2021-01-27 → 2025-01-06 | 141 | 6 / 6 |
 
 ### Noida International Airport, Jewar
 
@@ -42,6 +43,31 @@ The 2021 patchwork of fields is replaced by a long paved runway in the northern 
 [MoEFCC environmental clearance, 9 March 2020](https://media.niairport.in/-/jssmedia/dxn/portal/documents/environment-clearance-compliance/environment-clearance-approval.pdf).
 
 **Limits.** The pair brackets multi-year construction, not a single-day event. Nearby fields also change with crops. Only CONSTRUCTION inside the illustrative registered platform should match the zone; the document does not establish compliance with every condition.
+
+### Navi Mumbai International Airport, Ulwe
+
+**Verified visually.** Expected `AUTHORISED_ACTIVITY`; categories: CONSTRUCTION, URBANISATION, WATER_CHANGE, OTHER_CHANGE.
+
+- WGS84 bbox: `[73.045, 18.965, 73.095, 19.015]`; canonical tile `43QBB`.
+- Replay: **2021-01-27 to 2025-01-06**; 141 distinct tile-screened clear dates.
+- Recent 90 days: **6 AOI-clear dates** out of 6 tile-screened dates.
+
+The 2021 view already shows a large levelled platform with perimeter roads. By 2025 a distinct east–west runway, apron and terminal roofs occupy it. The northern creek and surrounding settlements provide stable landmarks.
+
+| Check | Scene (linked STAC record) | UTC acquisition | Tile cloud | AOI valid |
+|---|---|---|---:|---:|
+| Before | [S2B_43QBB_20210127_1_L2A](https://earth-search.aws.element84.com/v1/collections/sentinel-2-l2a/items/S2B_43QBB_20210127_1_L2A) | 2021-01-27T05:53:40.690000Z | 0.000411% | 100.00% |
+| After | [S2B_43QBB_20250106_0_L2A](https://earth-search.aws.element84.com/v1/collections/sentinel-2-l2a/items/S2B_43QBB_20250106_0_L2A) | 2025-01-06T05:53:41.120000Z | 0.000630% | 100.00% |
+
+![Navi Mumbai International Airport, Ulwe, before](preview-navi-before.jpg)
+
+![Navi Mumbai International Airport, Ulwe, after](preview-navi-after.jpg)
+
+**Public record.** PIB confirms EC on 22 November 2010. The fetched 2025 compliance report, general-information table, records EC/CRZ No.21-60/2021-IA-III dated 28 November 2021, valid to 27 November 2031; its annexes reproduce the clearance. The earlier clearance was extended to 21 November 2021. The source is an operator-published public document, not an independent compliance audit.
+
+[NMIA Environmental & CRZ compliance report, April–September 2025](https://navimumbai.adaniairports.com/-/media/Images/AdaniAirNaviMumbaiAirport/Reports/Environmental-Compliances/Half-Yearly-Environment--CRZ-Compliance-Reports/NMIAL--Half_Yearly_Compliance-Report-April-2025--Sept-2025.pdf). [PIB: Environmental clearance accorded, 22 November 2010](https://www.pib.gov.in/newsite/PrintRelease.aspx?lang=2&reg=48&relid=67416).
+
+**Limits.** This pair demonstrates building on prepared land, not the original hill removal or mangrove reclamation. Wetland changes outside the airport platform must be judged separately. The old and renewed clearance have separate registry periods.
 
 ## Authorisation registry limitations
 

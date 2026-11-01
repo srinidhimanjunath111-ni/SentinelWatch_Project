@@ -28,5 +28,40 @@
       "end_date": "2025-03-24",
       "note": "AUTHORISED_ACTIVITY expected from inspected pair; The pair brackets multi-year construction, not a single-day event. Nearby fields also change with crops. Only CONSTRUCTION inside the illustrative registered platform should match the zone; the document does not establish compliance with every condition."
     }
+  },
+  {
+    "name": "Navi Mumbai International Airport, Ulwe",
+    "state": "Maharashtra",
+    "district": "Raigad",
+    "site_type": "infrastructure",
+    "categories": [
+      "CONSTRUCTION",
+      "URBANISATION",
+      "WATER_CHANGE",
+      "OTHER_CHANGE"
+    ],
+    "description": "Runway and terminal built on an already graded airport platform between 2021 and 2025. Public EC/CRZ records exist; the registered platform outline is illustrative.",
+    "bbox": [
+      73.045,
+      18.965,
+      73.095,
+      19.015
+    ],
+    "interval": 720,
+    "sources": [
+      {
+        "title": "NMIA Environmental & CRZ compliance report, April–September 2025",
+        "url": "https://navimumbai.adaniairports.com/-/media/Images/AdaniAirNaviMumbaiAirport/Reports/Environmental-Compliances/Half-Yearly-Environment--CRZ-Compliance-Reports/NMIAL--Half_Yearly_Compliance-Report-April-2025--Sept-2025.pdf"
+      },
+      {
+        "title": "PIB: Environmental clearance accorded, 22 November 2010",
+        "url": "https://www.pib.gov.in/newsite/PrintRelease.aspx?lang=2&reg=48&relid=67416"
+      }
+    ],
+    "replay": {
+      "start_date": "2021-01-27",
+      "end_date": "2025-01-06",
+      "note": "AUTHORISED_ACTIVITY expected from inspected pair; This pair demonstrates building on prepared land, not the original hill removal or mangrove reclamation. Wetland changes outside the airport platform must be judged separately. The old and renewed clearance have separate registry periods."
+    }
   }
 ]

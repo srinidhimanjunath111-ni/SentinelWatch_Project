@@ -35,5 +35,87 @@
     "valid_to": null,
     "source": "Approximate developed platform traced from inspected Sentinel-2, 24 March 2025; not an official EC boundary. EC expiry not established; null is unknown.",
     "is_illustrative": true
+  },
+  {
+    "name": "Navi Mumbai International Airport, Ulwe — historical EC platform",
+    "zone_type": "CONSTRUCTION",
+    "geometry": {
+      "type": "Polygon",
+      "coordinates": [
+        [
+          [
+            73.047,
+            18.983
+          ],
+          [
+            73.087,
+            18.983
+          ],
+          [
+            73.092,
+            18.996
+          ],
+          [
+            73.078,
+            19.004
+          ],
+          [
+            73.047,
+            19.002
+          ],
+          [
+            73.047,
+            18.983
+          ]
+        ]
+      ]
+    },
+    "authority": "Ministry of Environment, Forest and Climate Change",
+    "reference": "PIB: EC accorded, 22 November 2010: https://www.pib.gov.in/newsite/PrintRelease.aspx?lang=2&reg=48&relid=67416",
+    "valid_from": "2010-11-22",
+    "valid_to": "2021-11-21",
+    "source": "Same illustrative imagery-traced platform, not an official boundary. Historical EC and extensions to 21 November 2021 recorded in the 2025 compliance report; original grant corroborated by PIB.",
+    "is_illustrative": true
+  },
+  {
+    "name": "Navi Mumbai International Airport, Ulwe — illustrative activity footprint",
+    "zone_type": "CONSTRUCTION",
+    "geometry": {
+      "type": "Polygon",
+      "coordinates": [
+        [
+          [
+            73.047,
+            18.983
+          ],
+          [
+            73.087,
+            18.983
+          ],
+          [
+            73.092,
+            18.996
+          ],
+          [
+            73.078,
+            19.004
+          ],
+          [
+            73.047,
+            19.002
+          ],
+          [
+            73.047,
+            18.983
+          ]
+        ]
+      ]
+    },
+    "authority": "Ministry of Environment, Forest and Climate Change",
+    "reference": "NMIA EC compliance Apr-Sep 2025: https://navimumbai.adaniairports.com/-/media/Images/AdaniAirNaviMumbaiAirport/Reports/Environmental-Compliances/Half-Yearly-Environment--CRZ-Compliance-Reports/NMIAL--Half_Yearly_Compliance-Report-April-2025--Sept-2025.pdf",
+    "valid_from": "2021-11-28",
+    "valid_to": "2031-11-27",
+    "source": "Approximate runway/terminal platform traced from Sentinel-2, 6 January 2025; not an official clearance boundary. EC/CRZ date and expiry from the public 2025 compliance report.",
+    "is_illustrative": true
   }
 ]
