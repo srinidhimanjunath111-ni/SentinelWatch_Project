@@ -450,3 +450,44 @@ def test_field_to_bare_inside_a_construction_zone_is_earthworks_not_a_harvest():
     context = AssessmentContext(zones=[_zone("CONSTRUCTION")])
     assessment = _assess(_scene(FOREST), _scene(FOREST, BARE), from_class=CROP_CLASS, to_class=BARE_CLASS, context=context)
     assert (assessment.category, assessment.verdict) == ("CONSTRUCTION", "AUTHORISED_ACTIVITY")
+
+
+def test_short_pair_browning_needs_physical_conversion_despite_model_labels():
+    # Drying grass remains vegetated, even when a classifier calls it bare or mine.
+    browning = (0.05, 0.07, 0.08, 0.24, 0.20, 0.14)
+    for site_type, source, target in (
+        ("mining", MINE, MINE),
+        ("forest", TREE, 1),
+        ("infrastructure", CROP_CLASS, BARE_CLASS),
+        ("infrastructure", CROP_CLASS, BUILT_CLASS),
+    ):
+        context = AssessmentContext(site_type=site_type, rainfall=Rainfall(gap_days=25))
+        assessment = _assess(
+            _scene(FOREST), _scene(FOREST, browning),
+            from_class=source, to_class=target, reference=_scene(FOREST), context=context,
+        )
+        assert (assessment.category, assessment.verdict) == ("OTHER_CHANGE", "NEEDS_REVIEW")
+        assert assessment.evidence["short_pair_browning"] is True
+        assert assessment.evidence["rule_strength"] <= 0.15
+        assert assessment.confidence <= 0.55
+        assert assessment.seasonal_persists is True, "A green reference does not prove senescence"
+
+
+def test_short_pair_real_clearing_still_alerts():
+    context = AssessmentContext(site_type="mining", rainfall=Rainfall(gap_days=23))
+    assessment = _assess(
+        _scene(FOREST), _scene(FOREST, BARE), from_class=TREE, to_class=MINE,
+        reference=_scene(FOREST), context=context,
+    )
+    assert (assessment.category, assessment.verdict) == ("MINING", "SUSPECTED_UNAUTHORISED")
+    assert assessment.evidence["short_pair_browning"] is False
+
+
+def test_short_pair_browning_with_positive_seasonal_match_is_benign():
+    browning = (0.05, 0.07, 0.08, 0.24, 0.20, 0.14)
+    assessment = _assess(
+        _scene(FOREST), _scene(FOREST, browning), from_class=CROP_CLASS, to_class=BUILT_CLASS,
+        reference=_scene(FOREST, browning),
+        context=AssessmentContext(site_type="infrastructure", rainfall=Rainfall(gap_days=25)),
+    )
+    assert assessment.verdict == "SEASONAL_BENIGN"

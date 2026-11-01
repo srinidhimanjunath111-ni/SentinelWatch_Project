@@ -83,6 +83,11 @@ AUTHORISED_OVERLAP = 0.5
 WEAK_CAUSE_STRENGTH = 0.15
 WEAK_CAUSE_CONFIDENCE_CAP = 0.55
 VEGETATION_GAIN_NDVI = 0.1
+# Within two months, drying vegetation can cross several index thresholds together.
+# Reuse the land-cover fallback's vegetation boundary; a model label alone cannot
+# establish conversion to a hard surface while the spectrum still shows vegetation.
+SHORT_PAIR_DAYS = 60
+VEGETATED_NDVI = 0.25
 _DARK_GROUND_SITES = ("mining", "infrastructure")
 
 
@@ -743,6 +748,21 @@ def assess_region(
         from_class, to_class, deltas, means, region, built_nearby, context, heavy_rain_mm, extreme_rain_mm
     )
 
+    short_pair_browning = (
+        context.rainfall.gap_days is not None
+        and 0 < context.rainfall.gap_days <= SHORT_PAIR_DAYS
+        and category in HUMAN_CAUSED
+        and deltas["ndvi"] < 0
+        and float(np.mean(after_indices["ndvi"][region])) >= VEGETATED_NDVI
+    )
+    if short_pair_browning:
+        category, rule_strength = "OTHER_CHANGE", WEAK_CAUSE_STRENGTH
+        reasons = [
+            f"Vegetation declined over {context.rainfall.gap_days} days, but the after-scene "
+            "spectrum still shows vegetation. Drying or senescence can also raise BSI and "
+            "NDBI; the land-cover labels do not independently establish clearing, mining or construction."
+        ]
+
     seasonal = seasonal_test(
         region,
         before_indices,
@@ -755,7 +775,7 @@ def assess_region(
     persists, fraction, coverage = seasonal.persists, seasonal.persist_fraction, seasonal.coverage
     # No season puts up a building. Bare ground can resemble a harvested field in every index
     # used here, so a match with last year cannot excuse land that is now classed as built.
-    newly_built = to_class == BUILT and from_class != BUILT
+    newly_built = to_class == BUILT and from_class != BUILT and not short_pair_browning
     if persists is False and newly_built:
         persists = None
         seasonal = replace(seasonal, persists=None, status="inconclusive")
@@ -780,7 +800,8 @@ def assess_region(
     elif persists:
         reasons.append(
             f"Same-season comparison with {context.reference_date} still shows this change "
-            f"across {fraction:.0%} of the region, so it is not seasonal."
+            f"across {fraction:.0%} of the region. A single prior-year scene cannot rule out "
+            "a shift in seasonal timing."
         )
 
     verdict: str
@@ -898,6 +919,7 @@ def assess_region(
                 else None
             ),
             "requires_human_verification": True,
+            "short_pair_browning": short_pair_browning,
         },
     )
 
