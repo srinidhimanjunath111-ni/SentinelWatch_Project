@@ -4,7 +4,6 @@
 const L = () => window.L;
 
 const IMAGERY_URL = "https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}";
-const LABELS_URL = "https://server.arcgisonline.com/ArcGIS/rest/services/Reference/World_Boundaries_and_Places/MapServer/tile/{z}/{y}/{x}";
 const ATTRIBUTION = "Imagery &copy; Esri, Maxar, Earthstar Geographics, and the GIS User Community";
 const BLANK_TILE = "data:image/gif;base64,R0lGODlhAQABAAAAACH5BAEKAAEALAAAAAABAAEAAAICTAEAOw==";
 
@@ -21,7 +20,8 @@ export const HEALTH_COLOURS = {
 export function createMap(container, options = {}) {
   const leaflet = L();
   if (!leaflet) throw new Error("Map library failed to load.");
-  const { labels = true, interactive = true, ...rest } = options;
+  // Imagery only: third-party label layers draw their own international boundaries.
+  const { interactive = true, ...rest } = options;
   const map = leaflet.map(container, {
     zoomControl: interactive,
     attributionControl: true,
@@ -49,13 +49,6 @@ export function createMap(container, options = {}) {
   };
   const imagery = leaflet.tileLayer(IMAGERY_URL, { ...tileOptions, attribution: ATTRIBUTION });
   imagery.addTo(map);
-  if (labels) {
-    // Place names sit above the imagery but under AOI vectors.
-    map.createPane("labels");
-    map.getPane("labels").style.zIndex = 350;
-    map.getPane("labels").style.pointerEvents = "none";
-    leaflet.tileLayer(LABELS_URL, { ...tileOptions, pane: "labels" }).addTo(map);
-  }
   let errors = 0;
   let loads = 0;
   imagery.on("tileerror", () => {
