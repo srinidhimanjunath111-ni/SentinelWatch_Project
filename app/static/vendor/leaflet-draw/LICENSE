@@ -1,0 +1,5 @@
+Leaflet.draw 1.0.4 is distributed under the MIT License, as declared in the
+"license" field of the package's package.json (npm: leaflet-draw@1.0.4).
+The npm tarball ships no separate licence file.
+Copyright 2012-2017 Jon West, Jacob Toye, and Leaflet.
+Project: https://github.com/Leaflet/Leaflet.draw
