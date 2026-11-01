@@ -112,7 +112,7 @@ def _ring(*points):
     return [{"lat": lat, "lon": lon} for lon, lat in points]
 
 
-def test_overpass_falls_back_across_mirrors_and_sends_a_user_agent(monkeypatch):
+def test_overpass_falls_back_to_osm_map_and_sends_a_user_agent(monkeypatch):
     calls = []
     body = {
         "elements": [
@@ -134,15 +134,16 @@ def test_overpass_falls_back_across_mirrors_and_sends_a_user_agent(monkeypatch):
         ]
     }
 
-    def fake_post(url, data, timeout, headers):
+    def fake_get(url, params, timeout, headers, **kwargs):
         calls.append((url, headers))
         if len(calls) == 1:
             return _Response(None, status=406)
         return _Response(body)
 
-    monkeypatch.setattr(context_module.httpx, "post", fake_post)
+    monkeypatch.setattr(context_module.httpx, "get", fake_get)
     features = fetch_osm_features(BBOX)
     assert len(calls) == 2 and calls[0][0] != calls[1][0]
+    assert calls[1][0] == context_module.OSM_MAP_URL
     assert "SentinelWatch" in calls[0][1]["User-Agent"]
     assert {feature["kind"] for feature in features} == {"quarry", "protected_area"}
     assert all(feature["geometry"] for feature in features)
@@ -157,13 +158,66 @@ def test_failed_overpass_is_left_alone_for_a_while(monkeypatch):
         calls.append(1)
         raise httpx.ConnectTimeout("down")
 
-    monkeypatch.setattr(context_module.httpx, "post", down)
+    monkeypatch.setattr(context_module.httpx, "get", down)
     with pytest.raises(RuntimeError):
         fetch_osm_features(BBOX)
     first = len(calls)
     with pytest.raises(RuntimeError):
         fetch_osm_features(BBOX)
     assert len(calls) == first
+
+
+def test_map_fallback_hydrates_real_node_references_and_national_park(monkeypatch):
+    body = {"elements": [
+        {"type": "node", "id": 1, "lon": 76.1, "lat": 11.4},
+        {"type": "node", "id": 2, "lon": 76.2, "lat": 11.4},
+        {"type": "node", "id": 3, "lon": 76.2, "lat": 11.5},
+        {"type": "way", "id": 4, "nodes": [1, 2, 3, 1], "tags": {"landuse": "quarry"}},
+        {"type": "way", "id": 5, "nodes": [1, 2, 999, 1], "tags": {"landuse": "quarry"}},
+        {"type": "relation", "id": 6, "tags": {"boundary": "national_park"},
+         "members": [{"type": "way", "ref": 4, "role": "outer"}]},
+    ]}
+    calls = []
+
+    def get(url, **kwargs):
+        calls.append((url, kwargs))
+        return _Response(body) if url == context_module.OSM_MAP_URL else _Response({}, status=502)
+
+    monkeypatch.setattr(context_module.httpx, "get", get)
+    features = fetch_osm_features(BBOX)
+    assert len(features) == 3
+    assert features[0]["geometry"]["type"] == "Polygon"
+    assert features[1]["geometry"] is None, "Missing nodes must not create a fabricated polygon"
+    assert features[2]["kind"] == "protected_area"
+    assert features[2]["geometry"]["type"] == "MultiPolygon"
+    assert "local boundaries only" in features[0]["source"]
+    assert calls[0][1]["timeout"] <= 4
+    assert "is_in(" in calls[0][1]["params"]["data"]
+    assert "protected_area|national_park" in calls[0][1]["params"]["data"]
+
+
+def test_partial_overpass_response_is_not_cached_as_complete(monkeypatch):
+    def get(url, **kwargs):
+        if url == context_module.OSM_MAP_URL:
+            return _Response({"elements": []})
+        return _Response({"remark": "runtime error: Query timed out", "elements": []})
+
+    monkeypatch.setattr(context_module.httpx, "get", get)
+    assert fetch_osm_features(BBOX) == []
+    key = ",".join(f"{v:.4f}" for v in BBOX)
+    assert context_module._cache_get("osm", key, None) == []
+
+
+def test_stale_osm_cache_is_retained_when_all_sources_fail(monkeypatch):
+    key = ",".join(f"{v:.4f}" for v in BBOX)
+    context_module._cache_put("osm", key, [{"kind": "quarry", "osm_id": "way/7"}])
+    monkeypatch.setattr(context_module, "_OSM_TTL_SECONDS", -1)
+
+    def down(*args, **kwargs):
+        raise httpx.ConnectTimeout("down")
+
+    monkeypatch.setattr(context_module.httpx, "get", down)
+    assert fetch_osm_features(BBOX) == [{"kind": "quarry", "osm_id": "way/7", "stale": True}]
 
 
 def _stub_sources(monkeypatch, *, rainfall=None, eonet=None, gdacs=None, osm=None):

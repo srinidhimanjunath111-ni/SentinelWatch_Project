@@ -887,3 +887,17 @@ def test_regrowth_never_alerts_and_benign_regions_keep_a_place_in_the_evidence()
     assert len(kept) == 40
     assert sum(pair[0].verdict == "SEASONAL_BENIGN" for pair in kept) == 8
     assert kept[0][0].area_m2 == 149.0
+
+
+def test_short_pair_browning_keeps_evidence_without_dispatch_even_with_wrong_built_label(monkeypatch):
+    classes = FixedLandCover([2, 3])  # A crop-to-built error must not override the spectrum.
+    monkeypatch.setattr("app.services.monitoring.get_landcover_classifier", lambda: classes)
+    browning = (0.05, 0.07, 0.08, 0.24, 0.20, 0.14)
+    install({AFTER: Scene(FOREST, browning), BEFORE: Scene(FOREST), REFERENCE: Scene(FOREST)})
+    run = _run(make_area(site_type="infrastructure"))
+    assert run.status == "COMPLETED"
+    findings = _rows(Finding)
+    assert findings and all(f.verdict == "NEEDS_REVIEW" for f in findings)
+    assert all(json.loads(f.evidence_json)["short_pair_browning"] for f in findings)
+    assert _rows(Alert) == []
+    assert _rows(NotificationAttempt) == []

@@ -33,9 +33,10 @@ EONET_EVENTS = "https://eonet.gsfc.nasa.gov/api/v3/events"
 GDACS_EVENTS = "https://www.gdacs.org/gdacsapi/api/events/geteventlist/SEARCH"
 OVERPASS_MIRRORS = (
     "https://overpass-api.de/api/interpreter",
-    "https://overpass.kumi.systems/api/interpreter",
+    "https://overpass.private.coffee/api/interpreter",
     "https://maps.mail.ru/osm/tools/overpass/api/interpreter",
 )
+OSM_MAP_URL = "https://api.openstreetmap.org/api/0.6/map.json"
 DEM_URL = (
     "https://copernicus-dem-30m.s3.amazonaws.com/"
     "Copernicus_DSM_COG_10_{ns}{lat:02d}_00_{ew}{lon:03d}_00_DEM/"
@@ -398,7 +399,11 @@ def _element_geometry(element: dict[str, Any]) -> dict[str, Any] | None:
 
 
 def fetch_osm_features(bbox: list[float]) -> list[dict[str, Any]]:
-    """Quarries and protected areas inside the AOI, with geometry for raster overlap."""
+    """Quarries and protected areas, using the OSM map API when Overpass is overloaded.
+
+    The map fallback supplies complete local ways, but cannot discover an enclosing polygon
+    whose boundary never enters the AOI. An empty result never proves absence of protection.
+    """
 
     west, south, east, north = bbox
     key = f"{west:.4f},{south:.4f},{east:.4f},{north:.4f}"
@@ -407,39 +412,61 @@ def fetch_osm_features(bbox: list[float]) -> list[dict[str, Any]]:
         return cached
     # Overpass is often overloaded. After all mirrors fail, leave it alone for a while.
     if _cache_get("osm-failed", key, _OSM_FAILURE_TTL_SECONDS) is not None:
+        stale = _cache_get("osm", key, None)
+        if stale is not None:
+            return [dict(feature, stale=True) for feature in stale]
         raise RuntimeError("Overpass failed recently; not retrying yet.")
     box = f"{south:.5f},{west:.5f},{north:.5f},{east:.5f}"
     query = (
-        "[out:json][timeout:25];("
+        "[out:json][timeout:5];"
+        f"is_in({(south + north) / 2:.5f},{(west + east) / 2:.5f})->.containing;("
         f'way["landuse"="quarry"]({box});relation["landuse"="quarry"]({box});'
-        f'way["boundary"="protected_area"]({box});relation["boundary"="protected_area"]({box});'
+        f'way["boundary"~"^(protected_area|national_park)$"]({box});'
+        f'relation["boundary"~"^(protected_area|national_park)$"]({box});'
         f'way["leisure"="nature_reserve"]({box});relation["leisure"="nature_reserve"]({box});'
+        'rel(pivot.containing)["boundary"~"^(protected_area|national_park)$"];'
+        'rel(pivot.containing)["leisure"="nature_reserve"];'
         ");out tags geom;"
     )
     errors: list[str] = []
     body = None
-    for mirror in OVERPASS_MIRRORS:
+    source = "Overpass / OpenStreetMap"
+    for index, mirror in enumerate(OVERPASS_MIRRORS):
         try:
-            response = httpx.post(
+            response = httpx.get(
                 mirror,
-                data={"data": query},
-                timeout=settings.context_timeout_seconds,
+                params={"data": query},
+                timeout=min(4.0, settings.context_timeout_seconds),
                 headers={"User-Agent": settings.context_user_agent},
+                follow_redirects=True,
             )
             response.raise_for_status()
             body = response.json()
+            if body.get("remark") or not isinstance(body.get("elements"), list):
+                raise ValueError("Overpass returned an incomplete result.")
             break
         except (httpx.HTTPError, ValueError) as error:
+            body = None
             errors.append(f"{mirror}: {error}")
+        if index == 0:
+            try:
+                body = _osm_map_elements(bbox)
+                source = "OpenStreetMap map API (local boundaries only)"
+                break
+            except (httpx.HTTPError, ValueError) as error:
+                errors.append(f"OSM map API: {error}")
     if body is None:
         _cache_put("osm-failed", key, True)
-        raise RuntimeError("All Overpass mirrors failed. " + " | ".join(errors))
+        stale = _cache_get("osm", key, None)
+        if stale is not None:
+            return [dict(feature, stale=True) for feature in stale]
+        raise RuntimeError("All OSM sources failed. " + " | ".join(errors))
     features = []
     for element in body.get("elements") or []:
         tags = element.get("tags") or {}
         if tags.get("landuse") == "quarry":
             kind = "quarry"
-        elif tags.get("boundary") == "protected_area" or tags.get("leisure") == "nature_reserve":
+        elif tags.get("boundary") in ("protected_area", "national_park") or tags.get("leisure") == "nature_reserve":
             kind = "protected_area"
         else:
             continue
@@ -449,10 +476,42 @@ def fetch_osm_features(bbox: list[float]) -> list[dict[str, Any]]:
                 "name": tags.get("name") or tags.get("name:en"),
                 "osm_id": f"{element.get('type')}/{element.get('id')}",
                 "geometry": _element_geometry(element),
+                "source": source,
             }
         )
     _cache_put("osm", key, features)
     return features
+
+
+def _osm_map_elements(bbox: list[float]) -> dict[str, Any]:
+    """Hydrate the map API's node references into Overpass-style way geometry."""
+
+    response = httpx.get(
+        OSM_MAP_URL, params={"bbox": ",".join(f"{value:.5f}" for value in bbox)},
+        timeout=settings.context_timeout_seconds,
+        headers={"User-Agent": settings.context_user_agent}, follow_redirects=True,
+    )
+    response.raise_for_status()
+    body = response.json()
+    elements = body.get("elements")
+    if not isinstance(elements, list):
+        raise ValueError("OSM map API returned no element list.")
+    nodes = {element["id"]: element for element in elements if element.get("type") == "node"}
+    ways = {}
+    for element in elements:
+        if element.get("type") != "way":
+            continue
+        refs = element.get("nodes") or []
+        # Never close an incomplete way across missing nodes.
+        if refs and all(ref in nodes for ref in refs):
+            element["geometry"] = [{"lon": nodes[ref]["lon"], "lat": nodes[ref]["lat"]} for ref in refs]
+        ways[element["id"]] = element
+    for element in elements:
+        if element.get("type") == "relation":
+            for member in element.get("members") or []:
+                if member.get("type") == "way" and member.get("ref") in ways:
+                    member["geometry"] = ways[member["ref"]].get("geometry") or []
+    return body
 
 
 # Terrain ------------------------------------------------------------------------------
