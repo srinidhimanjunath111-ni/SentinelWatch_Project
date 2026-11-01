@@ -194,5 +194,36 @@
       "end_date": "2024-04-17",
       "note": "SEASONAL_BENIGN expected from inspected pair; This is an interior forest–meadow mosaic, not a verified buffer cadastral polygon or a pure sal stand. No conspicuous new clearing is visible in these checked views; this is not proof that none occurred between dates. Do not infer leaf loss from NDVI alone, and do not promise alert suppression until the app actually uses the same-season reference."
     }
+  },
+  {
+    "name": "Yamuna floodplain near Shastri Park, Delhi",
+    "state": "Delhi",
+    "district": "North / Central / North East Delhi",
+    "site_type": "disaster",
+    "categories": [
+      "FLOOD",
+      "WATER_CHANGE",
+      "OTHER_CHANGE"
+    ],
+    "description": "Yamuna flooding during the documented July 2023 event; water spread is visible in clear portions of a partly cloudy 13 July scene. Cloud-limited replay: raise the existing tile-cloud filter to 85 percent for this scene.",
+    "bbox": [
+      77.2,
+      28.65,
+      77.25,
+      28.7
+    ],
+    "interval": 1440,
+    "sources": [
+      {
+        "title": "NRSC Delhi flood report, 13 July 2023, Ref.2023/FL/DL/04",
+        "url": "https://ndem.nrsc.gov.in/documents/Disaster_Document/2023/DL/dlflood50dsc13072023_0600hrs/dlflood50dsc13072023_0600hrs_report.pdf"
+      }
+    ],
+    "replay": {
+      "start_date": "2023-06-08",
+      "end_date": "2023-07-13",
+      "note": "NATURAL_EVENT expected from inspected pair; The after scene has 77.16% tile cloud and only 79.71% AOI-valid SCL; cloud covers other parts of the bbox. No fully clear after image was found between 12 July and 5 August in the inspected tile. This is a conditional flood replay, not a routine clear-scene recommendation. The proposed max_cloud_cover=85 uses the existing seed loader field; a default 40% tile filter would exclude the scene. Only valid pixels should enter analysis. These dates bracket the documented 12–13 July flood, but do not establish an exact onset or peak at every pixel."
+    },
+    "max_cloud_cover": 85
   }
 ]
