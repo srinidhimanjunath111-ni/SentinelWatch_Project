@@ -14,6 +14,7 @@ from sqlalchemy import Boolean, DateTime, Float, ForeignKey, Integer, String, Te
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.database import Base
+from app.timeutil import utcnow
 
 
 def uuid_str() -> str:
@@ -37,11 +38,17 @@ class MonitoringArea(Base):
     sensitivity: Mapped[str] = mapped_column(String(16), default="MEDIUM")
     monitoring_interval_minutes: Mapped[int] = mapped_column(Integer, default=1440)
     status: Mapped[str] = mapped_column(String(16), default="ACTIVE", index=True)
-    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
     updated_at: Mapped[datetime] = mapped_column(
-        DateTime, default=datetime.utcnow, onupdate=datetime.utcnow
+        DateTime, default=utcnow, onupdate=utcnow
     )
     last_checked_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    state: Mapped[str | None] = mapped_column(String(80), nullable=True)
+    district: Mapped[str | None] = mapped_column(String(120), nullable=True)
+    site_type: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    description: Mapped[str | None] = mapped_column(Text, nullable=True)
+    sources_json: Mapped[str | None] = mapped_column(Text, nullable=True)
+    next_check_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True, index=True)
 
     acquisition_links: Mapped[list[AOIAcquisition]] = relationship(
         back_populates="area", cascade="all, delete-orphan"
@@ -63,6 +70,9 @@ class SatelliteAcquisition(Base):
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=uuid_str)
     provider: Mapped[str] = mapped_column(String(64), default="copernicus-data-space")
     product_id: Mapped[str] = mapped_column(String(255), unique=True, index=True)
+    # Provider-independent identity, so failover cannot analyse one overpass twice.
+    scene_key: Mapped[str | None] = mapped_column(String(64), nullable=True, index=True)
+    tile: Mapped[str | None] = mapped_column(String(16), nullable=True)
     collection: Mapped[str] = mapped_column(String(96), default="sentinel-2-l2a")
     satellite: Mapped[str | None] = mapped_column(String(48), nullable=True)
     sensor: Mapped[str | None] = mapped_column(String(64), nullable=True)
@@ -77,7 +87,7 @@ class SatelliteAcquisition(Base):
     quality_note: Mapped[str | None] = mapped_column(Text, nullable=True)
     cached_raster_path: Mapped[str | None] = mapped_column(String(512), nullable=True)
     band_manifest_json: Mapped[str | None] = mapped_column(Text, nullable=True)
-    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
 
     aoi_links: Mapped[list[AOIAcquisition]] = relationship(
         back_populates="acquisition", cascade="all, delete-orphan"
@@ -94,9 +104,14 @@ class AOIAcquisition(Base):
     aoi_id: Mapped[str] = mapped_column(ForeignKey("monitoring_areas.id"), index=True)
     acquisition_id: Mapped[str] = mapped_column(ForeignKey("satellite_acquisitions.id"), index=True)
     selection_role: Mapped[str] = mapped_column(String(32), default="CANDIDATE")
-    first_seen_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    first_seen_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
     last_selected_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     notes: Mapped[str | None] = mapped_column(Text, nullable=True)
+    # AOI-specific observation state, measured from SCL inside this AOI's grid.
+    aoi_clear_fraction: Mapped[float | None] = mapped_column(Float, nullable=True)
+    scene_status: Mapped[str] = mapped_column(String(32), default="DISCOVERED")
+    thumbnail: Mapped[str | None] = mapped_column(String(512), nullable=True)
+    case_id: Mapped[str | None] = mapped_column(String(36), nullable=True)
 
     area: Mapped[MonitoringArea] = relationship(back_populates="acquisition_links")
     acquisition: Mapped[SatelliteAcquisition] = relationship(back_populates="aoi_links")
@@ -115,9 +130,9 @@ class ModelVersion(Base):
     training_dataset: Mapped[str | None] = mapped_column(String(255), nullable=True)
     metrics_json: Mapped[str] = mapped_column(Text, default="{}")
     notes: Mapped[str | None] = mapped_column(Text, nullable=True)
-    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
     updated_at: Mapped[datetime] = mapped_column(
-        DateTime, default=datetime.utcnow, onupdate=datetime.utcnow
+        DateTime, default=utcnow, onupdate=utcnow
     )
 
     analyses: Mapped[list[AnalysisRecord]] = relationship(back_populates="model_version")
@@ -143,8 +158,14 @@ class MonitoringRun(Base):
     after_acquisition_id: Mapped[str | None] = mapped_column(
         ForeignKey("satellite_acquisitions.id"), nullable=True
     )
-    started_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    started_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
     completed_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    origin: Mapped[str] = mapped_column(String(24), default="live")
+    trigger: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    as_of_date: Mapped[str | None] = mapped_column(String(10), nullable=True)
+    replay_id: Mapped[str | None] = mapped_column(String(36), nullable=True, index=True)
+    replay_force: Mapped[bool] = mapped_column(Boolean, default=False)
+    provider: Mapped[str | None] = mapped_column(String(64), nullable=True)
 
     area: Mapped[MonitoringArea] = relationship(back_populates="runs")
     analysis: Mapped[AnalysisRecord | None] = relationship(back_populates="run", uselist=False)
@@ -167,7 +188,7 @@ class AnalysisRecord(Base):
     quality_json: Mapped[str] = mapped_column(Text, default="{}")
     result_json: Mapped[str] = mapped_column(Text, default="{}")
     evidence_path: Mapped[str | None] = mapped_column(String(512), nullable=True)
-    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
     completed_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
 
     area: Mapped[MonitoringArea] = relationship(back_populates="analyses")
@@ -211,15 +232,22 @@ class Case(Base):
     requires_human_verification: Mapped[bool] = mapped_column(Boolean, default=True)
     model_version_label: Mapped[str | None] = mapped_column(String(128), nullable=True)
     quality_note: Mapped[str | None] = mapped_column(Text, nullable=True)
-    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
     reviewed_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     review_note: Mapped[str | None] = mapped_column(Text, nullable=True)
+    origin: Mapped[str] = mapped_column(String(24), default="live", index=True)
+    replay_id: Mapped[str | None] = mapped_column(String(36), nullable=True)
+    image_bounds_json: Mapped[str | None] = mapped_column(String(160), nullable=True)
+    images_json: Mapped[str | None] = mapped_column(Text, nullable=True)
+    seasonal_reference_json: Mapped[str | None] = mapped_column(Text, nullable=True)
+    context_json: Mapped[str | None] = mapped_column(Text, nullable=True)
 
     area: Mapped[MonitoringArea | None] = relationship(back_populates="cases")
     analysis: Mapped[AnalysisRecord | None] = relationship(back_populates="case")
     findings: Mapped[list[Finding]] = relationship(
         back_populates="case", cascade="all, delete-orphan", order_by="Finding.confidence.desc()"
     )
+    # Alerts reference findings, so they must be flushed after them and deleted before them.
     alerts: Mapped[list[Alert]] = relationship(
         back_populates="case", cascade="all, delete-orphan", order_by="Alert.created_at.desc()"
     )
@@ -249,6 +277,17 @@ class Finding(Base):
     persistence_score: Mapped[float | None] = mapped_column(Float, nullable=True)
     requires_human_verification: Mapped[bool] = mapped_column(Boolean, default=True)
     evidence_json: Mapped[str] = mapped_column(Text)
+    verdict: Mapped[str | None] = mapped_column(String(32), nullable=True, index=True)
+    verdict_reasons_json: Mapped[str | None] = mapped_column(Text, nullable=True)
+    transition_from: Mapped[str | None] = mapped_column(String(24), nullable=True)
+    transition_to: Mapped[str | None] = mapped_column(String(24), nullable=True)
+    indices_json: Mapped[str | None] = mapped_column(Text, nullable=True)
+    change_probability: Mapped[float | None] = mapped_column(Float, nullable=True)
+    # True: still differs from last year's same season. False: does not. None: no reference.
+    seasonal_persists: Mapped[bool | None] = mapped_column(Boolean, nullable=True)
+    centroid_lat: Mapped[float | None] = mapped_column(Float, nullable=True)
+    centroid_lon: Mapped[float | None] = mapped_column(Float, nullable=True)
+    thumbnail: Mapped[str | None] = mapped_column(String(512), nullable=True)
 
     case: Mapped[Case] = relationship(back_populates="findings")
 
@@ -266,10 +305,28 @@ class Alert(Base):
     acknowledgement_note: Mapped[str | None] = mapped_column(Text, nullable=True)
     department_id: Mapped[str | None] = mapped_column(ForeignKey("departments.id"), nullable=True)
     priority_score: Mapped[float | None] = mapped_column(Float, nullable=True)
-    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow, index=True)
     acknowledged_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    category: Mapped[str | None] = mapped_column(String(48), nullable=True, index=True)
+    verdict: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    origin: Mapped[str] = mapped_column(String(24), default="live")
+    replay_id: Mapped[str | None] = mapped_column(String(36), nullable=True)
+    aoi_id: Mapped[str | None] = mapped_column(String(36), nullable=True, index=True)
+    confidence: Mapped[float | None] = mapped_column(Float, nullable=True)
+    area_m2: Mapped[float | None] = mapped_column(Float, nullable=True)
+    acquisition_date: Mapped[str | None] = mapped_column(String(10), nullable=True)
+    detected_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    dispatched_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    # When processing of the scene finished; latency_seconds runs from here to dispatch.
+    scene_processed_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    latency_seconds: Mapped[float | None] = mapped_column(Float, nullable=True)
+    persistence_count: Mapped[int] = mapped_column(Integer, default=1)
+    last_seen_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    closed_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    status_note: Mapped[str | None] = mapped_column(Text, nullable=True)
 
     case: Mapped[Case] = relationship(back_populates="alerts")
+    finding: Mapped[Finding | None] = relationship()
     department: Mapped[Department | None] = relationship(back_populates="alerts")
     notifications: Mapped[list[NotificationAttempt]] = relationship(
         back_populates="alert", cascade="all, delete-orphan", order_by="NotificationAttempt.created_at.desc()"
@@ -286,7 +343,7 @@ class CaseReview(Base):
     action: Mapped[str] = mapped_column(String(32))
     note: Mapped[str | None] = mapped_column(Text, nullable=True)
     reviewer: Mapped[str | None] = mapped_column(String(120), nullable=True)
-    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
 
     case: Mapped[Case] = relationship(back_populates="reviews")
 
@@ -301,7 +358,7 @@ class AuditLog(Base):
     entity_id: Mapped[str] = mapped_column(String(36), index=True)
     event_type: Mapped[str] = mapped_column(String(96), index=True)
     payload_json: Mapped[str] = mapped_column(Text, default="{}")
-    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
 
 
 class PriorityCandidate(Base):
@@ -319,8 +376,8 @@ class PriorityCandidate(Base):
     evidence_json: Mapped[str] = mapped_column(Text, default="{}")
     status: Mapped[str] = mapped_column(String(24), default="PRELIMINARY", index=True)
     monitoring_area_id: Mapped[str | None] = mapped_column(ForeignKey("monitoring_areas.id"), nullable=True)
-    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
-    updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow, onupdate=utcnow)
 
 
 class Department(Base):
@@ -331,10 +388,11 @@ class Department(Base):
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=uuid_str)
     name: Mapped[str] = mapped_column(String(160), unique=True)
     category: Mapped[str] = mapped_column(String(80))
+    state: Mapped[str | None] = mapped_column(String(80), nullable=True)
     recipient_email: Mapped[str | None] = mapped_column(String(255), nullable=True)
     active: Mapped[bool] = mapped_column(Boolean, default=True)
-    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
-    updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow, onupdate=utcnow)
 
     alerts: Mapped[list[Alert]] = relationship(back_populates="department")
 
@@ -351,9 +409,13 @@ class NotificationAttempt(Base):
     destination: Mapped[str | None] = mapped_column(String(255), nullable=True)
     status: Mapped[str] = mapped_column(String(32), default="RECORDED")
     detail: Mapped[str | None] = mapped_column(Text, nullable=True)
-    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow, index=True)
+    attempts: Mapped[int] = mapped_column(Integer, default=1)
+    file_path: Mapped[str | None] = mapped_column(String(512), nullable=True)
+    triggered_by: Mapped[str] = mapped_column(String(24), default="auto")
 
     alert: Mapped[Alert] = relationship(back_populates="notifications")
+    department: Mapped[Department | None] = relationship()
 
 
 class CatalogueRefresh(Base):
@@ -369,4 +431,22 @@ class CatalogueRefresh(Base):
     result_count: Mapped[int] = mapped_column(Integer, default=0)
     newest_acquisition_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     message: Mapped[str] = mapped_column(Text)
-    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, index=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow, index=True)
+
+
+class AuthorisedZone(Base):
+    """A registered permission footprint. OSM data is context and never lands here."""
+
+    __tablename__ = "authorised_zones"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=uuid_str)
+    name: Mapped[str] = mapped_column(String(200))
+    zone_type: Mapped[str] = mapped_column(String(24), index=True)
+    geometry_json: Mapped[str] = mapped_column(Text)
+    authority: Mapped[str | None] = mapped_column(String(200), nullable=True)
+    reference: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    valid_from: Mapped[str | None] = mapped_column(String(10), nullable=True)
+    valid_to: Mapped[str | None] = mapped_column(String(10), nullable=True)
+    source: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    is_illustrative: Mapped[bool] = mapped_column(Boolean, default=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)

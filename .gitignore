@@ -11,10 +11,15 @@ htmlcov/
 instance/
 storage/uploads/
 storage/outputs/
+storage/satellite-cache/
+storage/context-cache/
+storage/outbox/
+logs/
 data/raw/
 data/processed/
 data/demo/
-models/checkpoints/
+models/checkpoints/*
+!models/checkpoints/*.pt
 models/*.pt
 models/*.pth
 reports/training/

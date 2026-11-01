@@ -1,11 +1,27 @@
-"""Provider contracts and shared catalogue data structures."""
+"""Provider contracts and the shared data structures for imagery access."""
 
 from __future__ import annotations
 
+import logging
+import re
+import time
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from datetime import datetime
-from pathlib import Path
-from typing import Any, Protocol
+from typing import Any, Protocol, TypeVar
+
+import numpy as np
+
+from app.config import settings
+from app.satellite.grid import AOIGrid
+
+logger = logging.getLogger(__name__)
+
+T = TypeVar("T")
+
+# Contract band order, keyed by the ESA band name.
+BAND_NAMES = ("B02", "B03", "B04", "B08", "B11", "B12")
+SCL_INVALID = (0, 1, 3, 8, 9, 10)
 
 
 class ProviderError(RuntimeError):
@@ -22,6 +38,8 @@ class ProviderResponseError(ProviderError):
 
 @dataclass(frozen=True)
 class AcquisitionCandidate:
+    """One catalogue record of one Sentinel-2 tile on one date."""
+
     product_id: str
     collection: str
     acquisition_datetime: datetime
@@ -32,54 +50,98 @@ class AcquisitionCandidate:
     sensor: str | None
     processing_level: str | None
     source_url: str | None
+    provider: str = ""
+    tile: str | None = None
+    processing_baseline: str | None = None
+    sequence: int = 0
+    # {"B02": {"href", "scale"}, ..., "SCL": {"href"}}; provider-specific extras allowed.
     assets: dict[str, Any] = field(default_factory=dict)
     raw_properties: dict[str, Any] = field(default_factory=dict)
 
     @property
-    def quality_score(self) -> float:
-        """A transparent quality score used only for pair selection."""
+    def scene_key(self) -> str:
+        """Identity independent of provider and reprocessing: satellite, tile and date."""
 
-        cloud_penalty = (self.cloud_cover if self.cloud_cover is not None else 100.0) / 100.0
-        return max(0.0, 1.0 - cloud_penalty)
+        platform = (self.satellite or "S2").upper().replace("SENTINEL-", "S")
+        return f"{platform}_{self.tile or 'XXXXX'}_{self.acquisition_datetime:%Y%m%d}"
 
-
-@dataclass(frozen=True)
-class AcquisitionPair:
-    before: AcquisitionCandidate
-    after: AcquisitionCandidate
-    rationale: str
+    @property
+    def date_key(self) -> str:
+        return f"{self.acquisition_datetime:%Y-%m-%d}"
 
 
-@dataclass(frozen=True)
-class DownloadResult:
-    path: Path
-    width: int
-    height: int
-    bands: tuple[str, ...]
-    request_metadata: dict[str, Any]
+def parse_baseline(value: str | None) -> float | None:
+    try:
+        return float(value) if value else None
+    except (TypeError, ValueError):
+        return None
 
 
-class SatelliteDataProvider(Protocol):
-    """Minimal provider interface, making another authorised source replaceable."""
+def deduplicate_scenes(scenes: list[AcquisitionCandidate]) -> list[AcquisitionCandidate]:
+    """Keep one record per date and tile, newest first.
+
+    The catalogue can list one overpass as _0_ and _1_ reprocessings. The higher sequence
+    wins, then the higher processing baseline.
+    """
+
+    best: dict[tuple[str, str | None], AcquisitionCandidate] = {}
+    for scene in scenes:
+        key = (scene.date_key, scene.tile)
+        current = best.get(key)
+        rank = (scene.sequence, parse_baseline(scene.processing_baseline) or 0.0)
+        if current is None or rank > (
+            current.sequence,
+            parse_baseline(current.processing_baseline) or 0.0,
+        ):
+            best[key] = scene
+    return sorted(best.values(), key=lambda item: item.acquisition_datetime, reverse=True)
+
+
+def safe_scene_fragment(value: str) -> str:
+    return re.sub(r"[^A-Za-z0-9_.-]+", "-", value).strip("-")[:180] or "scene"
+
+
+def with_retries(
+    operation: Callable[[], T],
+    *,
+    description: str,
+    retryable: tuple[type[BaseException], ...],
+    attempts: int | None = None,
+    backoff_seconds: float | None = None,
+) -> T:
+    """Bounded exponential retry. ``ProviderAuthRequired`` is never worth retrying."""
+
+    total = max(1, attempts if attempts is not None else settings.provider_retries)
+    delay = settings.provider_backoff_seconds if backoff_seconds is None else backoff_seconds
+    for attempt in range(1, total + 1):
+        try:
+            return operation()
+        except ProviderAuthRequired:
+            raise
+        except retryable as error:
+            if attempt == total:
+                raise ProviderError(f"{description} failed after {total} attempt(s): {error}") from error
+            logger.info("%s failed (attempt %d/%d): %s", description, attempt, total, error)
+            time.sleep(delay * 2 ** (attempt - 1))
+    raise ProviderError(f"{description} did not run.")  # Unreachable, keeps type checkers honest.
+
+
+class ImageryProvider(Protocol):
+    """What the pipeline needs from an imagery source, regardless of who hosts it."""
 
     name: str
+    requires_credentials: bool
 
-    def search_acquisitions(
-        self,
-        geometry: dict[str, Any],
-        datetime_interval: str,
-        max_cloud_cover: float,
-        limit: int = 100,
-    ) -> list[AcquisitionCandidate]: ...
+    def search_scenes(
+        self, geometry: dict[str, Any], start: datetime, end: datetime, limit: int = 300
+    ) -> list[AcquisitionCandidate]:
+        """Real catalogue records intersecting the geometry, de-duplicated, newest first."""
+        ...
 
-    def select_pair(
-        self, candidates: list[AcquisitionCandidate], min_gap_days: int
-    ) -> AcquisitionPair | None: ...
+    def read_scl(self, scene: AcquisitionCandidate, grid: AOIGrid) -> np.ndarray:
+        """uint8 H x W Scene Classification Layer on the AOI grid (0 is no data)."""
+        ...
 
-    def download_multiband(
-        self,
-        candidate: AcquisitionCandidate,
-        geometry: dict[str, Any],
-        max_cloud_cover: float,
-        destination: Path,
-    ) -> DownloadResult: ...
+    def read_bands(self, scene: AcquisitionCandidate, grid: AOIGrid) -> np.ndarray:
+        """float32 [6,H,W] surface reflectance in [0,1], contract band order."""
+        ...

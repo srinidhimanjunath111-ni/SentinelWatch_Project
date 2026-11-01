@@ -1,26 +1,23 @@
 """Transparent automatic priority-area discovery from a user-supplied region.
 
-Candidates are generated as a grid, then checked against the real CDSE catalogue.
-They are deliberately labelled preliminary because catalogue availability and cloud
-quality are not evidence that a physical environmental incident occurred.
+Candidates are generated as a grid, then checked against the real imagery catalogue. They
+are deliberately labelled preliminary because catalogue availability and cloud quality are
+not evidence that a physical environmental incident occurred.
 """
 
 from __future__ import annotations
 
 import json
-from datetime import UTC, datetime, timedelta
+from datetime import timedelta
 from typing import Any
 
 from sqlalchemy.orm import Session
 
 from app.models import CatalogueRefresh, PriorityCandidate
-from app.satellite.copernicus import CopernicusDataSpaceProvider
+from app.satellite.chain import get_chain
 from app.satellite.geometry import geometry_bbox
 from app.satellite.provider import ProviderError
-
-
-def _now() -> datetime:
-    return datetime.now(UTC).replace(tzinfo=None)
+from app.timeutil import utcnow
 
 
 def _grid_cells(geometry: dict[str, Any], grid_size: int) -> list[dict[str, Any]]:
@@ -48,34 +45,27 @@ def discover_priority_candidates(
     region_name: str,
     geometry: dict[str, Any],
     grid_size: int,
-    max_cloud_cover: float,
     lookback_days: int,
 ) -> list[PriorityCandidate]:
-    """Persist candidates based on actual availability/freshness metadata when reachable."""
+    """Persist candidates based on actual availability and freshness metadata when reachable."""
 
-    provider = CopernicusDataSpaceProvider()
-    end, start = _now(), _now() - timedelta(days=lookback_days)
-    interval = f"{start.isoformat()}Z/{end.isoformat()}Z"
+    chain = get_chain()
+    end, start = utcnow(), utcnow() - timedelta(days=lookback_days)
     created: list[PriorityCandidate] = []
     for position, cell in enumerate(_grid_cells(geometry, grid_size), start=1):
         bbox = geometry_bbox(cell)
-        query = {
-            "collection": provider.collection,
-            "datetime": interval,
-            "max_cloud_cover": max_cloud_cover,
-            "geometry": cell,
-        }
+        query = {"start": start.isoformat() + "Z", "end": end.isoformat() + "Z", "geometry": cell}
         try:
-            observations = provider.search_acquisitions(cell, interval, max_cloud_cover, limit=10)
+            observations = chain.search_scenes(cell, start, end, limit=60)
             newest = observations[0] if observations else None
-            average_cloud = (
-                sum(item.cloud_cover for item in observations if item.cloud_cover is not None)
-                / max(1, sum(item.cloud_cover is not None for item in observations))
-                if observations
-                else None
+            clouds = [item.cloud_cover for item in observations if item.cloud_cover is not None]
+            average_cloud = sum(clouds) / len(clouds) if clouds else None
+            freshness = (
+                max(0.0, 1.0 - ((end - newest.acquisition_datetime).days / lookback_days))
+                if newest
+                else 0.0
             )
-            freshness = max(0.0, 1.0 - ((end - newest.acquisition_datetime).days / lookback_days)) if newest else 0.0
-            cloud_quality = 1.0 - min((average_cloud or max_cloud_cover) / 100.0, 1.0)
+            cloud_quality = 1.0 - min((average_cloud if average_cloud is not None else 100.0) / 100.0, 1.0)
             availability = min(len(observations) / 4.0, 1.0)
             score = round(100 * (0.45 * freshness + 0.35 * cloud_quality + 0.20 * availability), 1)
             evidence = {
@@ -91,13 +81,14 @@ def discover_priority_candidates(
             )
             refresh_status, refresh_message = "SUCCESS", f"Found {len(observations)} catalogue item(s)."
             newest_at = newest.acquisition_datetime if newest else None
+            provider = newest.provider if newest else "chain"
         except ProviderError as error:
             score, evidence = 0.0, {"provider_error": str(error), "score_formula": "unavailable"}
             explanation = "Grid-generated preliminary candidate. Catalogue evidence is unavailable; no change claim was made."
-            refresh_status, refresh_message, newest_at = "FAILED", str(error), None
+            refresh_status, refresh_message, newest_at, provider = "FAILED", str(error), None, "chain"
         db.add(
             CatalogueRefresh(
-                provider=provider.name,
+                provider=provider,
                 query_json=json.dumps(query),
                 status=refresh_status,
                 result_count=int(evidence.get("observation_count", 0)),
