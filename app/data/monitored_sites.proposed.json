@@ -165,5 +165,34 @@
       "end_date": "2024-12-16",
       "note": "NATURAL_EVENT expected from inspected pair; The checked clear dates are 5 February and 16 December 2024: the latter is a delayed optical view, not immediate disaster detection. A 5.5 km AOI cannot contain the complete approximately 8 km runout. Do not call this Puthumala: the selected corridor is the 2024 Mundakkai–Chooralmala event, distinct from the 2019 Puthumala disaster."
     }
+  },
+  {
+    "name": "Kanha forest–meadow seasonal reference",
+    "state": "Madhya Pradesh",
+    "district": "Mandla",
+    "site_type": "forest",
+    "categories": [
+      "SEASONAL_VEGETATION",
+      "OTHER_CHANGE"
+    ],
+    "description": "Forest–meadow mosaic showing dry-season canopy browning and post-monsoon greening. Same-season April 2023 and April 2024 imagery retain the same wooded margins; intended no-alert reference.",
+    "bbox": [
+      80.59,
+      22.265,
+      80.64,
+      22.315
+    ],
+    "interval": 1440,
+    "sources": [
+      {
+        "title": "Madhya Pradesh Tourism: Kanha National Park, seasonal vegetation guidance",
+        "url": "https://www.mptourism.com/destination-kanha-national-park.php"
+      }
+    ],
+    "replay": {
+      "start_date": "2023-11-09",
+      "end_date": "2024-04-17",
+      "note": "SEASONAL_BENIGN expected from inspected pair; This is an interior forest–meadow mosaic, not a verified buffer cadastral polygon or a pure sal stand. No conspicuous new clearing is visible in these checked views; this is not proof that none occurred between dates. Do not infer leaf loss from NDVI alone, and do not promise alert suppression until the app actually uses the same-season reference."
+    }
   }
 ]

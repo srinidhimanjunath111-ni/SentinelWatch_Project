@@ -21,6 +21,7 @@ Coordinates were refined from the inspected imagery; they are monitoring AOIs, n
 | Parsa East Kete Basan mine, Hasdeo Arand | AUTHORISED_ACTIVITY | 2021-02-24 → 2025-03-25 | 148 | 5 / 7 |
 | Rawa–Nangal border ridge quarries | SUSPECTED_UNAUTHORISED | 2021-03-05 → 2025-03-24 | 158 | 9 / 10 |
 | Mundakkai–Chooralmala debris-flow corridor, Wayanad | NATURAL_EVENT | 2024-02-05 → 2024-12-16 | 14 | 0 / 1 |
+| Kanha forest–meadow seasonal reference | SEASONAL_BENIGN | 2023-11-09 → 2024-04-17 | 23 | 4 / 6 |
 
 ### Noida International Airport, Jewar
 
@@ -146,6 +147,35 @@ A narrow pre-existing channel in forest/plantation becomes a broad, continuous p
 [Yunus et al., Documenting the Wayanad landslide](https://nora.nerc.ac.uk/id/eprint/539430/1/Documenting_Wayanad_LASL_R1.pdf). [Eos Landslide Blog, 6 August 2024](https://eos.org/thelandslideblog/wayanad-landslides).
 
 **Limits.** The checked clear dates are 5 February and 16 December 2024: the latter is a delayed optical view, not immediate disaster detection. A 5.5 km AOI cannot contain the complete approximately 8 km runout. Do not call this Puthumala: the selected corridor is the 2024 Mundakkai–Chooralmala event, distinct from the 2019 Puthumala disaster.
+
+### Kanha forest–meadow seasonal reference
+
+**Verified visually.** Expected `SEASONAL_BENIGN`; categories: SEASONAL_VEGETATION, OTHER_CHANGE.
+
+- WGS84 bbox: `[80.59, 22.265, 80.64, 22.315]`; canonical tile `44QMK`.
+- Replay: **2023-11-09 to 2024-04-17**; 23 distinct tile-screened clear dates.
+- Recent 90 days: **4 AOI-clear dates** out of 6 tile-screened dates.
+
+November 2023 has a darker green canopy. April 2024 shows broad, diffuse browning rather than a newly bounded clearing. April 2023 (additional inspected reference) has the same reddish western slopes, forest/meadow margins, tracks and small waterbody. November 2024 returns to greener canopy.
+
+| Check | Scene (linked STAC record) | UTC acquisition | Tile cloud | AOI valid |
+|---|---|---|---:|---:|
+| Before | [S2A_44QMK_20231109_0_L2A](https://earth-search.aws.element84.com/v1/collections/sentinel-2-l2a/items/S2A_44QMK_20231109_0_L2A) | 2023-11-09T05:22:42.767000Z | 0.223911% | 100.00% |
+| After | [S2A_44QMK_20240417_0_L2A](https://earth-search.aws.element84.com/v1/collections/sentinel-2-l2a/items/S2A_44QMK_20240417_0_L2A) | 2024-04-17T05:22:46.341000Z | 0.000325% | 100.00% |
+
+![Kanha forest–meadow seasonal reference, before](preview-kanha-before.jpg)
+
+![Kanha forest–meadow seasonal reference, after](preview-kanha-after.jpg)
+
+**Public record.** The state tourism page describes vegetation drying from March to June. This supports a seasonal interpretation, alongside the repeat April appearance and November regreening. No forestry-work authorisation is implied or registered.
+
+[Madhya Pradesh Tourism: Kanha National Park, seasonal vegetation guidance](https://www.mptourism.com/destination-kanha-national-park.php).
+
+**Limits.** This is an interior forest–meadow mosaic, not a verified buffer cadastral polygon or a pure sal stand. No conspicuous new clearing is visible in these checked views; this is not proof that none occurred between dates. Do not infer leaf loss from NDVI alone, and do not promise alert suppression until the app actually uses the same-season reference.
+
+Additional inspected same-season dry reference: [S2A_44QMK_20230403_0_L2A](https://earth-search.aws.element84.com/v1/collections/sentinel-2-l2a/items/S2A_44QMK_20230403_0_L2A), 2023-04-03T05:22:42.578000Z, tile cloud 0.040653%, AOI valid 100.00%. Reference images are not copied, retaining the two-JPEG-per-site limit.
+
+Additional inspected post-monsoon regreening reference: [S2A_44QMK_20241123_0_L2A](https://earth-search.aws.element84.com/v1/collections/sentinel-2-l2a/items/S2A_44QMK_20241123_0_L2A), 2024-11-23T05:22:42.452000Z, tile cloud 0.000000%, AOI valid 100.00%. Reference images are not copied, retaining the two-JPEG-per-site limit.
 
 ## Authorisation registry limitations
 
