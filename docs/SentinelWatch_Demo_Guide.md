@@ -1,57 +1,53 @@
-# SentinelWatch Live Demonstration Guide
+# SentinelWatch: ten-minute demonstration
 
-## Before the demo
+This script follows the current JavaScript labels and API routes. It has been checked against source, **not rehearsed in a browser by the documentation worker**. Complete the preflight before using it. Do not promise a new live acquisition during the presentation: Sentinel-2 revisits roughly every **2–5 days**, and cloud-free availability may be slower. The schedule only polls the catalogue.
 
-Run these commands in the project folder. Use the interpreter that has the dependencies installed.
+## Preflight, before the audience arrives
 
-```powershell
-python -m pip install -r requirements-core.txt
-python -m uvicorn app.main:app --host 127.0.0.1 --port 8000
-```
+1. Start the existing local server using the [README setup](../README.md#quick-start). Check whether `scripts/run.sh` / `scripts/run.ps1` have been supplied before relying on them. Do not reinstall dependencies, start training or open another server during the presentation.
+2. Open `http://127.0.0.1:8000/api/health` and `/api/system/status`. Inspect provider, scheduler, model and SMTP state. A healthy HTTP response alone does not prove the imagery path works.
+3. Open **Operations** (`/#/`). Choose an existing site with a completed genuine case and recorded dates. Prepare a site deep link (`/#/site/{actual-id}`) and case deep link (`/#/case/{actual-id}`). Substitute real IDs obtained from the UI/API; the braces here are notation, not literal URLs.
+4. At that site, inspect **Scene timeline** and **Findings history**. Choose an already-completed **Archive replay** case for the evidence segment. Record its actual date range, reference availability and method in rehearsal notes. Confirm the thumbnails and full images open. Do not select dates by guessing that an event occurred.
+5. If there is no completed real case, run and inspect an archive replay beforehand while network access exists. If none can be obtained, present the site/check state and the report's design explanation; say the case demonstration is unavailable. Do not fabricate a case.
+6. Prepare **Models and data** (`/#/models`), **Departments** (`/#/departments`) and **Zones** (`/#/zones`) in tabs. Read the model status and matching registry rather than memorising a score. Training is in progress at this handoff; metrics in the report are deliberately pending.
+7. For an offline fallback, inspect the local cached evidence and an already downloaded **case investigation PDF** beforehand. This is distinct from the obsolete project-review PDF. Keep the old project-review PDF out of the presentation; a new report PDF still needs an integrator build.
+8. Test the actual projector width and browser zoom. Ensure site name, acquisition dates, verdict, origin badge and dispatch status remain readable. Screenshots are supplementary only when genuinely captured and captioned.
+9. Use a replay alert reserved for workflow practice, not a live operational alert. If write login is enabled, authenticate privately. Do not display configuration secrets or log into a department system. For email, use only an explicitly permitted controlled recipient and inspect channel outcomes; seeded `.example` inboxes cannot receive real mail.
 
-Open `http://127.0.0.1:8000/`, then verify `http://127.0.0.1:8000/api/health` and OpenAPI at `http://127.0.0.1:8000/docs`. The application initializes its SQLite schema at startup. Do not copy real values into `.env.example`; make a local `.env` with CDSE/SMTP settings only when authorized.
+## Timed script
 
-## Safe core demonstration
+| Time | Exact clicks / screen | What to say and show |
+|---|---|---|
+| 0:00–0:45 | Click **Operations** in the top navigation. Point to monitored sites, map, activity and alert feed. | “I mark places in India and check for new usable Sentinel-2 observations on a schedule. This is a review tool. Its strongest verdict is suspected unauthorised, with no authorisation on record.” Explain that base-map tiles are navigation context, not the dated analysis input. |
+| 0:45–1:45 | In the monitored-sites list, click the prepared site's name. Show **Configuration**, **Scene timeline** and its interval. If active and idle, click **Check now** once. | “This queues a genuine check. A six-hour catalogue poll does not mean a six-hour satellite image. Sentinel-2 revisits every two to five days, and clouds can delay a usable scene.” Read the actual progress or terminal message; it may correctly say **No new scene** or **No usable scene**. |
+| 1:45–2:45 | Scroll to **Archive replay**. In **From**, **To** and **Max scenes**, show the rehearsed real date range and a small selected-date budget. If no run is active and catalogue access is available, click **Start replay** once. Otherwise leave it untouched and open the completed replay case from **Findings history**. | “Archive replay runs the same analysis on real past observations. Its results are explicitly badged Archive replay; they are not new live alerts.” Show the badge and acquisition dates. Starting replay can need network access and may return a conflict while a run is active. Do not wait for completion on stage. |
+| 2:45–4:15 | In the completed incident, drag the before/after comparison divider. Click a row in **Changed regions** if several exist. Read **Why this verdict**. | “The model proposes changed pixels. Land-cover transitions, spectral indices and context propose a cause. These sentences record the evidence for this particular region.” Name only the category actually shown. Explain the displayed evidence score as a ranking heuristic, not accuracy or probability of illegality. |
+| 4:15–5:15 | Scroll to **Same-season comparison**, then **Context**. Show reference date/image if available; otherwise show the missing-reference message. Read rainfall/disaster information and any unavailable context. | “Leaf-fall, crops and seasonal water can resemble damage. I compare against the same season last year when there is a usable reference. Missing reference means untested. A feed failing does not mean no disaster happened.” If this case lacks a seasonal reference, demonstrate the limitation honestly. |
+| 5:15–6:00 | Click **Zones**. Click the relevant record, if one exists, to focus its geometry. Read type, validity/source and the illustrative marker. Return to the prepared case tab. | “The authorisation test checks date, matching activity type and overlap against this local register. Illustrative records have approximate boundaries and are not issued permits. An absent record is not proof of illegality.” Do not add a pretend official permit on stage. |
+| 6:00–7:15 | In the incident, show **Dispatch log**; then click **Departments**, select the routed department and open its inbox entry. | “Deforestation goes to Forest, mining to Mines & Geology, construction to Planning, and flood or landslide to Disaster Management. The inbox is a real application record. Email is separate.” Read the actual channel status: `RECORDED`, `OUTBOX_SAVED`, `SENT` or `FAILED`. “Saved to outbox means not sent. SENT means the SMTP server accepted it.” |
+| 7:15–8:00 | On the reserved replay alert, click **Acknowledge** if that action is available. Enter **Officer** as `Presentation exercise`; enter **Note (optional)** as `Demonstration of acknowledgement only; no field inspection performed.` Click the dialog's **Acknowledge** button. Show the updated state. If already acknowledged, open **Send to field verification** and cancel rather than recording a false action. | “This records a review step and its note. It does not prove that a department received mail or that a field visit happened.” Explain **Resolve** and **Mark false positive** without inventing an outcome. An alert without an eligible next action is not a reason to alter live records. |
+| 8:00–8:45 | Click **Download PDF report** in the incident header. Open the file only if it downloads successfully. | “This case PDF preserves dated imagery, findings and provenance for review.” If it fails, read the error and show the previously inspected case PDF with its original dates; do not call it a fresh download. This is not the project-report PDF. |
+| 8:45–9:30 | Click **Models and data**. Show architecture, dataset roles, evaluation split, limitations and artifact links actually present. | “The change model is a shared-encoder Siamese U-Net; land cover uses a single-date U-Net. I use held-out data and checkpoint-matched reports. If a model is unavailable, the method label identifies the spectral fallback.” Quote only a measured value actually present in the final registry. Never read an unfilled report token as a score. |
+| 9:30–10:00 | Return to **Operations** and the actual check outcome. | “The system keeps a traceable lead: observation, change region, proposed cause, seasonal check, authorisation-record check, department routing and human outcome. The remaining uncertainty is visible. Satellite imagery cannot establish illegality.” If the live check is still running, say so; do not imply it completed. |
 
-1. Show the dashboard title and state the boundary: it detects potential physical change, not illegality.
-2. Show **Live data status**. Explain that `connected (sqlite)` means the local database is reachable; it does not prove satellite imagery has been downloaded.
-3. Select **Add monitoring area** and explain AOI input/drawing. Create a small real/public area only if the reviewer permits storing it locally; otherwise show the form without submitting.
-4. Show **Discover priority areas**. Explain it queries catalogue availability over grid cells and marks results as preliminary candidates, not incidents.
-5. If CDSE metadata access is available, submit an AOI and choose **Check now**. The API initially returns a monitoring-run ID because processing is background work. Then refresh area/run data and inspect acquisition/provenance fields.
-6. Show `/api/system/status` or dashboard system status. Explain every warning honestly—credentials, Rasterio, scheduler and model status.
-7. If a real analysis completes, inspect its case/finding/alert, assign a department, inspect notification attempts, then use the case report route. Say exactly which step supplied each item.
+The time allocations are a presentation plan, not measured software runtimes. The script does not require a new analysis to finish during the ten minutes.
 
-## Preparing the optional operational path
+## Optional substitution: demonstrate marking a new site
 
-1. Install the additional prerequisites only if you need them:
+Use this instead of part of the site/replay segment only after rehearsal. Click **Operations → Add site** (`/#/add-site`). Search for a permitted Indian place or pan/zoom the map. Click **Rectangle** and drag a small area, or **Polygon** and click its corners, finishing on the first corner. Enter **Name**, **State**, optional **District**, **Type**, **Check catalogue**, **Sensitivity** and **Watch for** categories. Click **Start monitoring**. The UI limits a side to about 10.2 km by default; use a small preselected area. Do not imply that saving a new site guarantees an immediate finding. A place-search failure still permits manual navigation when map controls work.
 
-```powershell
-python -m pip install -r requirements-operational.txt
-```
+## Recovery plan
 
-2. Obtain authorized CDSE OAuth configuration and put it in local environment variables documented by `.env.example`.
-3. Restart the service and confirm that system status no longer says imagery credentials/Rasterio are unavailable.
-4. Choose a small AOI and dates with a reasonable cloud cover. A catalogue result is not automatically a usable pair; inspect date spacing and quality.
-5. Use `POST /api/areas/{aoi_id}/check-now` via the dashboard or API docs. Preserve the run ID, provider product IDs and returned status for your evidence.
+| Failure | Exact recovery | Honest explanation |
+|---|---|---|
+| Venue Wi-Fi fails | Keep the local server running; open the prepared local case deep link. If the page was already loaded, retain it. Use inspected downloaded evidence/PDF if necessary. Avoid a new replay request. | “These are previously processed real observations with these dates. New catalogue queries and online map tiles need a connection.” Local assets are vendored, but map tiles, place search, feeds and uncached windows still need network. |
+| Primary provider down | Show provider errors/status and allow the chain to try its alternatives. If all fail, move to the completed case. Do not keep clicking Check now or change provider URLs on stage. | “Failover is implemented; no provider is guaranteed. This run's failure remains recorded.” |
+| No new scene today / clouded scene | Read the real run message, show the timeline, then open the completed Archive replay case. | “The last pass is already analysed, or cloud cover prevents a usable pair. The app does not invent an image.” |
+| Replay blocked or slow | Acknowledge 409 when another run is active, or 503 when the catalogue is unreachable. Use the completed replay case and keep its badge visible. | “The request is queued/blocked as shown; this completed case is separate historical evidence.” |
+| Projector too narrow | Reduce browser zoom modestly, use direct site/case links, scroll to one panel at a time and keep dates/badges readable. Avoid editing CSS during the demo. | “I will show the evidence panels sequentially.” Do not hide provenance to enlarge a metric. |
+| Server restarts | Restart the same local launch command on the same database/storage, refresh `/api/health`, then reopen the deep link. Wait for UI reconnection or reload once. | “Saved evidence persists. The scheduler code requeues unfinished runs after startup; this recovery still needs rehearsal on the final package.” Never delete SQLite or reseed to hide a failure. |
+| Model unavailable | Point to model status and the case's actual method label; use a completed case only with its original provenance. | “This run used the labelled spectral method. I am not presenting it as a neural-model result.” |
+| SMTP absent or fails | Show the in-app inbox and exact saved/failed channel outcome. Do not attempt department login or invent delivery. | “Routing is recorded. This message was not sent / the SMTP attempt failed.” |
+| PDF download fails | Read the UI error; use a previously inspected case PDF or continue through on-screen evidence. | “The download did not succeed in this run.” |
 
-## Alerts, departments and reports
-
-- Add a review department through the dashboard/API.
-- Assign a genuine alert only after one exists. Inspect `GET /api/alerts/{alert_id}/notifications` to show whether the notification was merely recorded, not configured, sent or failed.
-- Generate the case report only for a real stored case. If ReportLab is unavailable, say the report module is optional and unverified, not that the report was generated.
-
-## If external services fail
-
-- **No catalogue response:** show the error/refresh status; do not retry indefinitely or invent observations.
-- **No suitable pair:** explain cloud/date constraints and show that the run ends without an analysis.
-- **No CDSE OAuth/Rasterio:** demonstrate metadata/UI/API/SQLite modules and point to the transparent blocked status.
-- **No trained model:** show `NOT_TRAINED`; describe baseline code as the current analysis method, not AI performance.
-- **No SMTP:** show recorded notification status and say delivery was not demonstrated.
-
-## Backup 2-minute sequence
-
-Start the app, open the dashboard, show `/api/health`, status cards, model governance, and `/docs`. Explain the as-built architecture and run `python -m pytest -q` plus `python -m ruff check .` beforehand. This demonstrates verified platform behaviour without pretending an external imagery pipeline is live.
-
-## Demo data
-
-`python -m app.demo_seed` can create synthetic fixtures only if you explicitly choose to use it. Set `DEMO_MODE=true` only for that labelled demonstration, say “synthetic demo data” on every relevant slide, and never mix it with claims about live satellite results.
+Do not use synthetic imagery, hard-coded scores, altered clocks or relabelled snapshots. If real evidence is unavailable, explain the implemented design and the observed blocker plainly.
