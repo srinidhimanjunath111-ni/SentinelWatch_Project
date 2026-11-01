@@ -131,5 +131,39 @@
       "end_date": "2025-03-24",
       "note": "SUSPECTED_UNAUTHORISED expected from inspected pair; The bbox crosses a state boundary; imagery alone cannot place individual cuts in a state or lease. The reported encroachment is too small to attribute reliably at 10 m. Nearby Rajasthan permits are explicitly documented. Never describe all visible quarrying as unauthorised. A cross-tile 2021 candidate had visibly different alignment and was rejected; only 43RGL is used for the pair."
     }
+  },
+  {
+    "name": "Mundakkai–Chooralmala debris-flow corridor, Wayanad",
+    "state": "Kerala",
+    "district": "Wayanad",
+    "site_type": "disaster",
+    "categories": [
+      "LANDSLIDE",
+      "FLOOD",
+      "OTHER_CHANGE"
+    ],
+    "description": "Visible widening and deposition along the 30 July 2024 debris-flow corridor. The bbox includes the source area and part of the runout, not the entire approximately 8 km path.",
+    "bbox": [
+      76.115,
+      11.45,
+      76.165,
+      11.5
+    ],
+    "interval": 1440,
+    "sources": [
+      {
+        "title": "Yunus et al., Documenting the Wayanad landslide",
+        "url": "https://nora.nerc.ac.uk/id/eprint/539430/1/Documenting_Wayanad_LASL_R1.pdf"
+      },
+      {
+        "title": "Eos Landslide Blog, 6 August 2024",
+        "url": "https://eos.org/thelandslideblog/wayanad-landslides"
+      }
+    ],
+    "replay": {
+      "start_date": "2024-02-05",
+      "end_date": "2024-12-16",
+      "note": "NATURAL_EVENT expected from inspected pair; The checked clear dates are 5 February and 16 December 2024: the latter is a delayed optical view, not immediate disaster detection. A 5.5 km AOI cannot contain the complete approximately 8 km runout. Do not call this Puthumala: the selected corridor is the 2024 Mundakkai–Chooralmala event, distinct from the 2019 Puthumala disaster."
+    }
   }
 ]

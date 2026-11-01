@@ -20,6 +20,7 @@ Coordinates were refined from the inspected imagery; they are monitoring AOIs, n
 | Navi Mumbai International Airport, Ulwe | AUTHORISED_ACTIVITY | 2021-01-27 → 2025-01-06 | 141 | 6 / 6 |
 | Parsa East Kete Basan mine, Hasdeo Arand | AUTHORISED_ACTIVITY | 2021-02-24 → 2025-03-25 | 148 | 5 / 7 |
 | Rawa–Nangal border ridge quarries | SUSPECTED_UNAUTHORISED | 2021-03-05 → 2025-03-24 | 158 | 9 / 10 |
+| Mundakkai–Chooralmala debris-flow corridor, Wayanad | NATURAL_EVENT | 2024-02-05 → 2024-12-16 | 14 | 0 / 1 |
 
 ### Noida International Airport, Jewar
 
@@ -120,6 +121,31 @@ The same-tile pair shows a stripped ridge, exposed quarry strips and changing ex
 [Rajasthan respondent reply in NGT OA 06/2025, incident-site coordinates](https://www.greentribunal.gov.in/sites/default/files/news_updates/Short%20Reply%20on%20behalf%20of%20R-%206%20in%20OA%20No%2006%20of%202025%20%28In%20re%20News%20item%20appearing%20in%20The%20Tribune%20dated%2012.12.2024%20titled%20Mining%20Mafia%20brings%20down%20another%20Aravalli%29.pdf). [Haryana respondent reply in NGT OA 06/2025](https://www.greentribunal.gov.in/sites/default/files/news_updates/Reply%20by%20R-1%20in%20OA%20No.%2006%20of%202025%20%28In%20re%20News%20item%20appearing%20in%20The%20Tribune%20dated%2012.12.2024%20titled%20Mining%20Mafia%20brings%20down%20another%20Aravalli%29.pdf).
 
 **Limits.** The bbox crosses a state boundary; imagery alone cannot place individual cuts in a state or lease. The reported encroachment is too small to attribute reliably at 10 m. Nearby Rajasthan permits are explicitly documented. Never describe all visible quarrying as unauthorised. A cross-tile 2021 candidate had visibly different alignment and was rejected; only 43RGL is used for the pair.
+
+### Mundakkai–Chooralmala debris-flow corridor, Wayanad
+
+**Verified visually.** Expected `NATURAL_EVENT`; categories: LANDSLIDE, FLOOD, OTHER_CHANGE.
+
+- WGS84 bbox: `[76.115, 11.45, 76.165, 11.5]`; canonical tile `43PFN`.
+- Replay: **2024-02-05 to 2024-12-16**; 14 distinct tile-screened clear dates.
+- Recent 90 days: **0 AOI-clear dates** out of 1 tile-screened dates.
+
+A narrow pre-existing channel in forest/plantation becomes a broad, continuous pale debris strip running diagonally from the southwestern source area toward settlements in the northeast. The before image already contains an older scar; the 2024 event visibly widens it.
+
+| Check | Scene (linked STAC record) | UTC acquisition | Tile cloud | AOI valid |
+|---|---|---|---:|---:|
+| Before | [S2B_43PFN_20240205_0_L2A](https://earth-search.aws.element84.com/v1/collections/sentinel-2-l2a/items/S2B_43PFN_20240205_0_L2A) | 2024-02-05T05:35:45.515000Z | 1.099115% | 100.00% |
+| After | [S2A_43PFN_20241216_0_L2A](https://earth-search.aws.element84.com/v1/collections/sentinel-2-l2a/items/S2A_43PFN_20241216_0_L2A) | 2024-12-16T05:35:46.705000Z | 0.012369% | 100.00% |
+
+![Mundakkai–Chooralmala debris-flow corridor, Wayanad, before](preview-wayanad-before.jpg)
+
+![Mundakkai–Chooralmala debris-flow corridor, Wayanad, after](preview-wayanad-after.jpg)
+
+**Public record.** Yunus et al. give the crown at 11.465104N,76.134982E and the event date as 30 July 2024. Eos corroborates the rainfall-triggered channelised debris flows and notes the pre-existing 2020 channel. The source crown falls inside the verified bbox.
+
+[Yunus et al., Documenting the Wayanad landslide](https://nora.nerc.ac.uk/id/eprint/539430/1/Documenting_Wayanad_LASL_R1.pdf). [Eos Landslide Blog, 6 August 2024](https://eos.org/thelandslideblog/wayanad-landslides).
+
+**Limits.** The checked clear dates are 5 February and 16 December 2024: the latter is a delayed optical view, not immediate disaster detection. A 5.5 km AOI cannot contain the complete approximately 8 km runout. Do not call this Puthumala: the selected corridor is the 2024 Mundakkai–Chooralmala event, distinct from the 2019 Puthumala disaster.
 
 ## Authorisation registry limitations
 
