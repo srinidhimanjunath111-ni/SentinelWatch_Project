@@ -285,8 +285,9 @@ textarea.input { height: auto; padding: 0.5rem; resize: vertical; line-height: 1
 .site-top { display: flex; align-items: center; justify-content: space-between; gap: 0.5rem; }
 .site-name { font-weight: 500; min-width: 0; overflow-wrap: anywhere; }
 .site-meta { color: var(--text-3); font-size: 0.923rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.site-run { display: flex; flex-direction: column; gap: 0.25rem; margin-top: 0.125rem; }
-.site-run-text { color: var(--text-2); font-size: 0.923rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.site-run { display: block; min-width: 0; }
+.site-run .progress { position: absolute; left: 2rem; right: 0.75rem; bottom: 0.25rem; }
+.site-run-text { display: block; color: var(--text-2); font-size: 0.923rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
 .ops-center { display: grid; grid-template-rows: auto minmax(0, 1fr) auto; min-width: 0; min-height: 0; }
 .kpi-strip { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); background: var(--surface); border-bottom: 1px solid var(--line); }
@@ -384,6 +385,7 @@ a.log-text:hover { color: var(--text); }
 .cell-thumb { width: 3.75rem; padding-right: 0 !important; }
 .table-thumb { width: 3.25rem; }
 .cell-stack { display: inline-flex; flex-wrap: wrap; align-items: center; gap: 0.25rem 0.5rem; color: var(--text); }
+.cell-stack-plain { color: inherit; }
 .cell-sub { display: block; color: var(--text-3); font-size: 0.846rem; }
 .data-table-compact td, .data-table-compact th { padding: 0.35rem 0.625rem; }
 

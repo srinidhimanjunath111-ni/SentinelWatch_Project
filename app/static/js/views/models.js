@@ -149,7 +149,23 @@ function artifactFigure(label, url) {
 
 const MODEL_NAMES = { change: "Change detector", landcover: "Land cover classifier" };
 
-function modelCard(model) {
+/**
+ * Registry status says a checkpoint is listed and on disk. It does not say the model loaded. A model
+ * that failed to load means scenes run on spectral rules, and the card must not read Ready.
+ */
+function runtimeState(model, system) {
+  const fromModel = model.loaded ?? model.available;
+  const fromSystem = system && system.models_loaded ? system.models_loaded[`${model.key}_available`] : undefined;
+  const attempted = model.load_attempted ?? (system && system.models_loaded ? system.models_loaded[`${model.key}_load_attempted`] : undefined);
+  const loaded = fromModel ?? fromSystem;
+  if (loaded === true) return { key: "loaded", tag: "Loaded", detail: `Loaded${system && system.device ? ` on ${system.device}` : ""}` };
+  if (loaded === false && (attempted === true || model.load_error)) {
+    return { key: "failed", tag: "Failed to load", detail: "Failed to load. Scenes are being processed with spectral rules until it is fixed." };
+  }
+  return { key: "pending", tag: "Ready", detail: "Loads when the next scene is analysed" };
+}
+
+function modelCard(model, system) {
   const metrics = model.metrics || {};
   const artifacts = model.artifacts || {};
   const datasets = asList(model.datasets);
@@ -160,6 +176,7 @@ function modelCard(model) {
     artifactFigure("Sample predictions", artifacts.samples),
   ].filter(Boolean);
   const ready = String(model.status || "").toUpperCase() === "READY";
+  const runtime = runtimeState(model, system);
   if (!ready && !model.architecture) {
     return h("article.panel.model-card",
       h("header.panel-head",
@@ -171,7 +188,7 @@ function modelCard(model) {
     h("header.panel-head",
       h("h2.panel-title", model.name || MODEL_NAMES[model.key] || humanise(model.key)),
       model.version ? h("span.panel-sub.mono", model.version) : null,
-      h("span.tag.tag-status", { dataset: { status: ready ? "ready" : "unavailable" } }, ready ? "Ready" : "Unavailable")),
+      h("span.tag.tag-status", { dataset: { status: ready && runtime.key !== "failed" ? "ready" : "unavailable" } }, ready ? runtime.tag : "Unavailable")),
     h("div.model-body",
       h("div.model-metrics",
         metrics.split ? h("p.section-label", `${humanise(metrics.split)} set`) : null,
@@ -189,7 +206,8 @@ function modelCard(model) {
         kv("Trained", formatDate(model.trained_at)),
         kv("Epochs", isNum(model.epochs) && Number(model.epochs) > 0 ? model.epochs : null),
         kv("Training time", isNum(model.training_seconds) && Number(model.training_seconds) > 0 ? formatDuration(model.training_seconds) : null),
-        kv("Device", model.device),
+        ready ? kv("Runtime", runtime.detail) : null,
+        kv("Trained on device", model.device),
         kv("Checkpoint hash", model.checkpoint_sha256 ? String(model.checkpoint_sha256).slice(0, 16) : null, { mono: true })),
       datasets.length ? h("div", h("h4.section-label", "Datasets"), datasetTable(datasets)) : null,
       perClassTable(metrics.per_class),
@@ -265,8 +283,9 @@ export async function mountModels(root) {
     if (disposed) return;
     if (models.status === "fulfilled") {
       const list = asList(models.value, "models");
+      const systemValue = system.status === "fulfilled" ? system.value : null;
       modelHost.replaceChildren(...(list.length
-        ? list.map(modelCard)
+        ? list.map((model) => modelCard(model, systemValue))
         : [emptyState("No models registered", "Model details appear here once the registry is present.")]));
     } else {
       modelHost.replaceChildren(errorState(models.reason, load, "Could not load model details"));

@@ -121,8 +121,12 @@ export async function mountDepartments(root, params) {
 
   async function loadLog() {
     try {
-      const rows = asList(await api.dispatches({ limit: 50 }), "dispatches");
+      const [rows, alerts] = await Promise.all([
+        api.dispatches({ limit: 50 }).then((body) => asList(body, "dispatches")),
+        api.alerts({ limit: 200 }).then((body) => asList(body, "alerts")).catch(() => []),
+      ]);
       if (disposed) return;
+      const alertById = new Map(alerts.map((alert) => [alert.id, alert]));
       const next = h("section.panel", { "aria-label": "Dispatch log" },
         h("header.panel-head", h("h2.panel-title", "Dispatch log")),
         rows.length
@@ -138,7 +142,7 @@ export async function mountDepartments(root, params) {
               h("td", typeof row.department === "object" && row.department ? row.department.name : row.department || row.department_name || ""),
               h("td", channelLabel(row.channel)),
               h("td.mono", row.destination || ""),
-              h("td", dispatchLine(row)))))))
+              h("td", h("span.cell-stack.cell-stack-plain", dispatchLine(row), replayBadge(alertById.get(row.alert_id)))))))))
           : h("p.panel-empty", "Nothing has been dispatched yet."));
       if (logHost.firstElementChild) morph(logHost.firstElementChild, next);
       else logHost.appendChild(next);

@@ -199,7 +199,7 @@ export function createOperationsView(root) {
       render: renderSite,
       signature: (row) => {
         const { area, run, open } = row;
-        return JSON.stringify([area.name, area.state, area.site_type, area.health, area.status, area.last_scene && area.last_scene.date, open, run && !run.final ? [run.message, run.stage, run.progress_percent] : null]);
+        return JSON.stringify([area.name, area.state, area.site_type, area.health, area.status, area.last_scene && area.last_scene.date, open, run && !run.final ? [run.message, run.stage, run.progress_percent, run.origin] : null]);
       },
     });
     if (rows.length) {
@@ -315,9 +315,9 @@ export function createOperationsView(root) {
       render: (row) => h("li.log-row", { dataset: { type: row.type } },
         h("time.log-time", { datetime: row.at }, formatClock(row.at)),
         row.area_id
-          ? h("a.log-text", { href: `#/site/${encodeURIComponent(row.area_id)}` }, row.text)
-          : h("span.log-text", row.text)),
-      signature: (row) => `${row.at}|${row.text}`,
+          ? h("a.log-text", { href: `#/site/${encodeURIComponent(row.area_id)}` }, row.origin === "archive_replay" ? "Archive replay: " : "", row.text)
+          : h("span.log-text", row.origin === "archive_replay" ? "Archive replay: " : "", row.text)),
+      signature: (row) => `${row.at}|${row.text}|${row.origin || ""}`,
     });
   }
 

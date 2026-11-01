@@ -7,7 +7,7 @@ import {
   categoryLabel, cleanText, errorText, formatArea, formatDate, formatDateTime, formatPercent, formatShortDate, healthLabel, intervalLabel, isFailedRun, isFinalRun, runLabel,
   sceneStatusKey, sceneStatusLabel, sensitivityLabel, siteTypeLabel,
 } from "../format.js";
-import { applyRun, on, removeArea, store, upsertArea } from "../state.js";
+import { applyRun, on, removeArea, runEvent, store, upsertArea } from "../state.js";
 import { areaBounds, createMap, fitTo, HEALTH_COLOURS, polygonStyle } from "../map.js";
 import {
   confirmModal, emptyState, errorState, imageBox, kv, onTick, progressBar, relTime, replayBadge, severityTag, skeletonRows, statusTag, toast,
@@ -84,15 +84,7 @@ export async function mountSite(root, params) {
   async function checkNow() {
     try {
       const run = await api.checkNow(areaId);
-      applyRun({
-        run_id: run.id || run.run_id,
-        area_id: areaId,
-        area_name: area.name,
-        status: run.status || "QUEUED",
-        stage: run.stage || "QUEUED",
-        progress_percent: run.progress_percent || 0,
-        message: run.message || "Queued for the next available worker.",
-      });
+      applyRun(runEvent(run, areaId, area.name));
     } catch (error) {
       toast(errorText(error, "Could not start a check."), "error");
     }
@@ -122,7 +114,9 @@ export async function mountSite(root, params) {
   function renderStatus() {
     const run = liveRun();
     const failed = lastFinalRun && isFailedRun(lastFinalRun.status);
-    const isReplayRun = run && (run.origin === "archive_replay" || replayRunIds.has(run.run_id));
+    const idleSource = area.status === "PAUSED" ? null : lastFinalRun || area.latest_run;
+    const shown = run || idleSource;
+    const isReplayRun = Boolean(shown) && (shown.origin === "archive_replay" || replayRunIds.has(shown.run_id || shown.id));
     const next = h("section.status-line", {
       dataset: { state: run ? "live" : failed ? "failed" : area.status === "PAUSED" ? "paused" : "idle" },
       "aria-live": "polite",
@@ -228,7 +222,7 @@ export async function mountSite(root, params) {
   let findingsLoaded = false;
   async function loadFindings() {
     try {
-      const rows = asList(await api.cases({ area_id: areaId, limit: 50 }), "cases");
+      const rows = asList(await api.cases({ area_id: areaId, limit: 200 }), "cases");
       if (disposed) return;
       findingsLoaded = true;
       replayCases.clear();
@@ -316,10 +310,10 @@ export async function mountSite(root, params) {
         try {
           const run = await api.run(id);
           if (isFinalRun(run.status)) {
-            applyRun({ run_id: id, area_id: areaId, area_name: area.name, status: run.status, stage: run.stage, progress_percent: run.progress_percent, message: run.message });
+            applyRun(runEvent(run, areaId, area.name));
             break;
           }
-          applyRun({ run_id: id, area_id: areaId, area_name: area.name, status: run.status, stage: run.stage, progress_percent: run.progress_percent, message: run.message });
+          applyRun(runEvent(run, areaId, area.name));
         } catch {
           break;
         }

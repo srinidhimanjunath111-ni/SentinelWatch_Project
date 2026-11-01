@@ -118,23 +118,35 @@ export function sortedAreas() {
 
 // ---------------------------------------------------------------- applying server data
 
+/** A stored run in the shape of an SSE run event. Provenance must survive: a replay stays a replay. */
+export function runEvent(run, areaId, areaName) {
+  return {
+    run_id: run.id || run.run_id,
+    area_id: areaId,
+    area_name: areaName,
+    status: run.status,
+    stage: run.stage,
+    progress_percent: run.progress_percent,
+    message: run.message,
+    origin: run.origin,
+    replay_id: run.replay_id,
+    as_of_date: run.as_of_date,
+  };
+}
+
 function setArea(area) {
   const sig = JSON.stringify(area);
   if (signatures.areas.get(area.id) === sig) return false;
   signatures.areas.set(area.id, sig);
   store.areas.set(area.id, area);
   const run = area.latest_run;
-  if (run && !isFinalRun(run.status) && !store.runs.has(area.id)) {
-    store.runs.set(area.id, {
-      run_id: run.id,
-      area_id: area.id,
-      area_name: area.name,
-      status: run.status,
-      stage: run.stage,
-      progress_percent: run.progress_percent,
-      message: run.message,
-    });
-    emit("runs");
+  if (run && !isFinalRun(run.status)) {
+    const current = store.runs.get(area.id);
+    // While the stream is live its events are newer than a poll. Without it, the poll is the truth.
+    if (!current || store.connection !== "live") {
+      store.runs.set(area.id, runEvent(run, area.id, area.name));
+      emit("runs");
+    }
   }
   return true;
 }
@@ -232,7 +244,12 @@ export function pushActivity(item) {
 }
 
 /** Server activity lines are logs, some with raw channel and status codes. Show them as sentences. */
-function readableActivity(row) {
+function readableActivity(input) {
+  let row = input;
+  if (!row.origin && row.type === "alert") {
+    const match = [...store.alerts.values()].find((alert) => alert.title === row.text);
+    if (match) row = { ...row, origin: match.origin };
+  }
   const match = /^([A-Z_]+) to (.+): ([A-Z_]+)$/.exec(row.text || "");
   if (!match) return { ...row, text: cleanText(row.text) };
   return { ...row, text: `${channelLabel(match[1])} to ${match[2]}: ${dispatchStatusLabel(match[3])}` };
@@ -282,7 +299,7 @@ export function applyRun(event) {
   const final = isFinalRun(event.status) || isFinalRun(event.stage) || (Number(event.progress_percent) >= 100 && event.status !== "RUNNING");
   store.runs.set(event.area_id, { ...event, final, updatedAt: Date.now() });
   if (!previous || previous.stage !== event.stage) {
-    if (event.message) pushActivity({ type: "run", text: `${event.area_name || "Site"}: ${event.message}`, area_id: event.area_id });
+    if (event.message) pushActivity({ type: "run", origin: event.origin, text: `${event.area_name || "Site"}: ${event.message}`, area_id: event.area_id });
   }
   emit("runs");
   dispatchTopic("run-event", event);
@@ -304,7 +321,7 @@ export function applyDispatch(event) {
   const alert = store.alerts.get(event.alert_id);
   if (alert) {
     const dept = typeof event.department === "object" ? event.department?.name : event.department;
-    pushActivity({ type: "dispatch", text: `${alert.area_name || "Alert"} dispatched to ${dept || "department"}`, area_id: alert.area_id });
+    pushActivity({ type: "dispatch", origin: alert.origin, text: `${alert.area_name || "Alert"} dispatched to ${dept || "department"}`, area_id: alert.area_id });
     refreshAlertSoon(event.alert_id);
   }
   dispatchTopic("dispatch-event", event);
@@ -347,7 +364,7 @@ export function applyAlertEvent(event) {
   const isNew = !knownAlertIds.has(alert.id);
   applyAlert(alert);
   if (isNew || kind === "created") {
-    pushActivity({ type: "alert", text: `${verdictHeadline(alert.verdict, alert.category)} at ${alertPlace(alert)}`, area_id: alert.area_id });
+    pushActivity({ type: "alert", origin: alert.origin, text: `${verdictHeadline(alert.verdict, alert.category)} at ${alertPlace(alert)}`, area_id: alert.area_id });
   }
   if (alert.area_id) refreshAreaSoon(alert.area_id);
   refreshOverviewSoon(400);
