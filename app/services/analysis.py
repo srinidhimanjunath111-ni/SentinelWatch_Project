@@ -606,13 +606,6 @@ def _classify_cause(
     # Being on a mining site only counts for ground that ends up bare. Fields around a mine
     # still get harvested, which raises BSI too but leaves them vegetated or crop.
     site_bare = mining_site and to_class == BARE
-    worked_ground = (BARE, MINE)
-    if mining_site and from_class in worked_ground and to_class in worked_ground and deltas["bsi"] < MINING_BSI_RISE:
-        reasons.append(
-            "Already worked ground changed on a site registered as a mining area, "
-            "consistent with benches or spoil moving."
-        )
-        return "MINING", reasons, 0.6
     if deltas["bsi"] >= MINING_BSI_RISE and (
         from_class == MINE or to_class == MINE or in_quarry >= QUARRY_OVERLAP or site_bare
     ):

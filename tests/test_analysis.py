@@ -483,6 +483,18 @@ def test_short_pair_real_clearing_still_alerts():
     assert assessment.evidence["short_pair_browning"] is False
 
 
+def test_same_mine_surface_without_new_exposed_soil_is_not_new_mining():
+    # Moisture and shadow can move an index on existing worked ground.
+    after = list(BARE)
+    after[5] += 0.15
+    assessment = _assess(
+        _scene(BARE), _scene(BARE, after), from_class=MINE, to_class=MINE,
+        context=AssessmentContext(site_type="mining", rainfall=Rainfall(gap_days=23)),
+    )
+    assert assessment.category == "OTHER_CHANGE"
+    assert assessment.evidence["rule_strength"] <= 0.15
+
+
 def test_short_pair_browning_with_positive_seasonal_match_is_benign():
     browning = (0.05, 0.07, 0.08, 0.24, 0.20, 0.14)
     assessment = _assess(
