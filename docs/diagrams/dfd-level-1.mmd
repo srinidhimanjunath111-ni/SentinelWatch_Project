@@ -1,16 +1,23 @@
 flowchart TB
-  U[Operator] --> P1[1. Manage area / discover candidate]
-  P1 --> D1[(SQLite database)]
-  P1 --> P2[2. Queue monitoring run]
-  P2 --> P3[3. Search CDSE catalogue]
-  P3 <--> E1[CDSE STAC]
-  P3 --> D1
-  P3 --> P4[4. Select temporal pair]
-  P4 -. configured credentials + rasterio .-> P5[5. Retrieve and preprocess imagery]
-  P5 --> P6[6. Change analysis]
-  P6 --> D1
-  P6 --> P7[7. Create finding / alert]
+  U[Operator] -->|Geometry and schedule| P1[1 Manage sites and registry]
+  P1 <--> D1[(SQLite)]
+  U -->|Check now or replay dates| P2[2 Queue and schedule runs]
+  D1 -->|Due active sites| P2
+  P2 --> P3[3 Discover and select usable dates]
+  P3 <-->|STAC and AOI SCL reads| SAT[Provider chain]
+  P3 -->|Scene links and run states| D1
+  P3 --> P4[4 Read aligned bands and analyse change]
+  SAT -->|Cropped real bands| P4
+  P4 <--> D2[(Window cache and evidence files)]
+  P4 --> P5[5 Classify regions and test seasonality and authorisation]
+  CTX[Optional context services] --> P5
+  D1 -->|In-force zone records| P5
+  P5 -->|Case, findings and reasons| D1
+  P5 --> P6[6 Filter, merge and route alerts]
+  P6 -->|Alert and delivery records| D1
+  P6 --> DEPT[Department inbox and optional SMTP]
+  D1 --> P7[7 Serve console, SSE and PDF]
+  D2 --> P7
+  P7 --> U
+  U -->|Status and review notes| P7
   P7 --> D1
-  P7 -. optional SMTP .-> E2[Email service]
-  D1 --> P8[8. Dashboard / case report]
-  P8 --> U

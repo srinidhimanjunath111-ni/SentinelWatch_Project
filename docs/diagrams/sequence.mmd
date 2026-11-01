@@ -1,27 +1,41 @@
 sequenceDiagram
   actor O as Operator
-  participant UI as Browser dashboard
+  participant UI as Browser
   participant API as FastAPI
   participant DB as SQLite
-  participant MON as Monitoring service
-  participant CDSE as CDSE STAC/Process API
-  participant AN as Analysis service
-  participant AL as Alert service
-  O->>UI: Click Check now
+  participant Q as Scheduler workers
+  participant P as Provider chain and cache
+  participant AN as Analysis and context
+  participant DIS as Dispatch
+  O->>UI: Open site and click Check now
   UI->>API: POST /api/areas/{id}/check-now
-  API->>DB: create MonitoringRun
-  API-->>UI: 202 Accepted + run id
-  API->>MON: background execution
-  MON->>CDSE: STAC search
-  CDSE-->>MON: acquisition metadata
-  MON->>DB: save metadata/run status
-  opt credentials + rasterio installed
-    MON->>CDSE: request imagery
-    MON->>AN: preprocess and compare pair
-    AN-->>MON: analysis/finding candidates
-    MON->>AL: create alerts if threshold met
-    AL->>DB: persist case, finding, alert
+  API->>DB: Persist QUEUED MonitoringRun
+  API->>Q: Submit run per AOI
+  API-->>UI: 202 with run_id
+  Q->>P: Search actual scenes and inspect AOI SCL
+  alt No new usable scene or no baseline
+    Q->>DB: Persist no-new or no-suitable outcome
+  else Usable pair exists
+    Q->>P: Read six-band pair and optional seasonal reference
+    P-->>Q: Aligned reflectance and valid masks
+    Q->>AN: Model or labelled fallback, regions and optional context
+    AN->>DB: Read in-force zone records
+    AN-->>Q: Category, verdict, reasons and evidence
+    Q->>DB: Persist analysis, case and findings
+    Q->>DB: Filter and merge eligible alerts
+    opt New eligible alerts
+      Q->>DIS: Route to responsible department
+      DIS->>DB: Record in-app inbox delivery
+      alt SMTP configured and email eligible
+        DIS->>DIS: Attempt SMTP with PDF when available
+        DIS->>DB: Record SENT or FAILED
+      else SMTP not configured
+        DIS->>DIS: Save unsent email where applicable
+        DIS->>DB: Record OUTBOX_SAVED where applicable
+      end
+    end
   end
-  UI->>API: read areas/cases/alerts
-  API->>DB: query persisted records
-  API-->>UI: JSON dashboard data
+  Q-->>UI: SSE run, scene and alert updates via API
+  DIS-->>UI: SSE dispatch outcomes via API
+  UI->>API: Refresh persisted state on reconnect or poll
+  API-->>UI: Current run, evidence and channel outcomes

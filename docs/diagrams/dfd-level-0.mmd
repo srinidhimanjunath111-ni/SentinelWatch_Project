@@ -1,6 +1,10 @@
 flowchart LR
-  USER[Operator / reviewer] -->|areas, discovery requests, reviews| SW((SentinelWatch))
-  SW -->|dashboard, cases, alerts, reports| USER
-  CDSE[Copernicus Data Space Ecosystem] -->|catalogue metadata; imagery when configured| SW
-  SW -->|STAC search / Process API request| CDSE
-  SW -. optional notification .-> EMAIL[Configured email recipient]
+  OP[Operator and reviewer] -->|Site geometry, schedules, replay and review actions| SW((SentinelWatch))
+  SW -->|Status, evidence, reasons, alerts and PDF| OP
+  SW -->|AOI, dates and asset reads| SAT[Sentinel-2 provider chain]
+  SAT -->|Real catalogue metadata, bands and SCL| SW
+  SW -->|Location and date queries| CTX[Rainfall, disaster, OSM and terrain services]
+  CTX -->|Optional corroboration or unavailable state| SW
+  SW -->|In-app inbox routing| DEPT[Department reviewer]
+  DEPT -->|Acknowledgement and outcome| SW
+  SW -->|Email only when configured| SMTP[SMTP service]
