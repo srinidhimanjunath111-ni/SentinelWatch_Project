@@ -362,6 +362,17 @@ export function formatParameters(value) {
   return String(n);
 }
 
+/**
+ * Sentences written by the server occasionally carry a code ("shrub_grass", "OUTBOX_SAVED").
+ * Product IDs and paths mix digits and capitals, so only all-letter tokens are rewritten.
+ */
+export function cleanText(value) {
+  if (value === null || value === undefined) return "";
+  return String(value)
+    .replace(/\b[a-z]+(?:_[a-z]+)+\b/g, (token) => landcoverLabel(token).toLowerCase())
+    .replace(/\b[A-Z]+(?:_[A-Z]+)+\b/g, (token) => humanise(token).toLowerCase());
+}
+
 /** Human-readable error text. Never leak a stack trace or a raw validation object. */
 export function errorText(error, fallback = "Something went wrong. Try again.") {
   const message = error && error.message ? String(error.message) : "";

@@ -4,7 +4,7 @@ import { h, debounce, morph, reconcile, setText } from "../dom.js";
 import { api, asList } from "../api.js";
 import { icon } from "../icons.js";
 import {
-  categoryLabel, errorText, formatArea, formatDate, formatDateTime, formatPercent, formatShortDate, healthLabel, intervalLabel, isFailedRun, isFinalRun, runLabel,
+  categoryLabel, cleanText, errorText, formatArea, formatDate, formatDateTime, formatPercent, formatShortDate, healthLabel, intervalLabel, isFailedRun, isFinalRun, runLabel,
   sceneStatusKey, sceneStatusLabel, sensitivityLabel, siteTypeLabel,
 } from "../format.js";
 import { applyRun, on, removeArea, store, upsertArea } from "../state.js";
@@ -122,7 +122,7 @@ export async function mountSite(root, params) {
   function renderStatus() {
     const run = liveRun();
     const failed = lastFinalRun && isFailedRun(lastFinalRun.status);
-    const isReplayRun = run && replayRunIds.has(run.run_id);
+    const isReplayRun = run && (run.origin === "archive_replay" || replayRunIds.has(run.run_id));
     const next = h("section.status-line", {
       dataset: { state: run ? "live" : failed ? "failed" : area.status === "PAUSED" ? "paused" : "idle" },
       "aria-live": "polite",
@@ -131,7 +131,7 @@ export async function mountSite(root, params) {
     h("span.status-main",
       run ? h("span.status-spinner", { "aria-hidden": "true" }) : h("span.dot", { dataset: { health: area.health || "OK" } }),
       h("span.status-stage", run ? runLabel(run.stage) || "Running" : "Status"),
-      h("span.status-message", run ? run.message || "Running" : statusIdleLine()),
+      h("span.status-message", cleanText(run ? run.message || "Running" : statusIdleLine())),
       isReplayRun ? h("span.tag.tag-replay", icon("history", { size: 12 }), "Archive replay") : null),
     run ? progressBar(run.progress_percent, { label: "Run progress" }) : null);
     if (statusHost.firstElementChild) morph(statusHost.firstElementChild, next);
@@ -192,7 +192,7 @@ export async function mountSite(root, params) {
           : null,
     ];
     const title = [formatDate(scene.date), asList(scene.categories).map(categoryLabel).join(", "), scene.satellite, scene.product_id].filter(Boolean).join("\n");
-    return h("li.scene", { dataset: { status }, title },
+    return h("li.scene", { class: scene.thumbnail ? null : "is-bare", dataset: { status }, title },
       scene.case_id
         ? h("a.scene-link", { href: `#/case/${encodeURIComponent(scene.case_id)}` }, inner)
         : h("div.scene-link.scene-static", inner));

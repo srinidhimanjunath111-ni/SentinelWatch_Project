@@ -6,7 +6,7 @@ import { formatDuration, formatShortDate, parseDate, relativeAge } from "./forma
 import { chime, isMuted, setMuted } from "./audio.js";
 import { connectEvents } from "./sse.js";
 import {
-  alertPlaceFull, applyAlertEvent, applyDispatch, applyHeartbeat, applyRun, applySceneEvent, on, reconcileRunsFromAreas, refreshAll, setConnection, store,
+  alertPlaceFull, applyAlertEvent, applyDispatch, applyHeartbeat, applyRun, applySceneEvent, newestSceneDate, on, reconcileRunsFromAreas, refreshAll, setConnection, store,
 } from "./state.js";
 import { emptyState, onTick, openModal, refreshRelativeTimes, showAlertBanner } from "./ui.js";
 import { login, setAuthHandler } from "./api.js";
@@ -103,7 +103,7 @@ function buildTopbar(host) {
     setText(schedulerText, tail ? `${label} · ${tail}` : label);
     schedulerDot.dataset.health = scheduler.enabled === false ? "PAUSED" : running + queued > 0 ? "CLOUDED" : "OK";
     if (running + queued > 0) schedulerDot.dataset.health = "OK";
-    const lastScene = overview.provider && overview.provider.last_scene_at;
+    const lastScene = newestSceneDate();
     setText(sceneText, lastScene ? `Last scene ${formatShortDate(lastScene)}, ${relativeAge(lastScene)}` : "No scene received yet");
   }
 
@@ -122,6 +122,7 @@ function buildTopbar(host) {
   paintConnection();
   paintClock();
   on("overview", paintScheduler);
+  on("areas", paintScheduler);
   on("connection", paintConnection);
   onTick(() => {
     paintScheduler();
@@ -181,8 +182,13 @@ async function runCleanup() {
   }
 }
 
+let firstRoute = true;
+
 async function onRoute(route) {
   const token = ++mountToken;
+  // Moves screen-reader and keyboard position with the screen. The first paint keeps default focus.
+  if (firstRoute) firstRoute = false;
+  else document.getElementById("main").focus({ preventScroll: true });
   await runCleanup();
   topbar.setActive(route.name);
   document.title = `${TITLES[route.name] || "SentinelWatch"} · SentinelWatch`;

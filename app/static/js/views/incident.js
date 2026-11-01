@@ -4,7 +4,7 @@ import { h, debounce, morph, setChildren } from "../dom.js";
 import { api, asList } from "../api.js";
 import { icon } from "../icons.js";
 import {
-  categoryLabel, channelLabel, dispatchLine, errorText, formatArea, formatDate, formatDateTime, formatLatency, formatPercent, formatSigned,
+  categoryLabel, channelLabel, cleanText, dispatchLine, errorText, formatArea, formatDate, formatDateTime, formatLatency, formatPercent, formatSigned,
   humanise, isNum, landcoverLabel, statusLabel, verdictHeadline, verdictLabel, zoneTypeLabel,
 } from "../format.js";
 import { on, severityRank, store } from "../state.js";
@@ -180,15 +180,34 @@ export async function mountIncident(root, params) {
           alert ? relTime(alert.detected_at || alert.created_at) : relTime(detail.created_at),
           replayBadge(detail) || replayBadge(alert))),
       h("div.page-actions",
-        h("a.btn", { href: api.reportUrl(detail.id), download: true }, icon("download"), "Download PDF report")));
+        h("button.btn", { type: "button", id: "report-btn", onclick: (event) => downloadReport(event.currentTarget) }, icon("download"), "Download PDF report")));
     if (headerHost.firstElementChild) morph(headerHost.firstElementChild, next);
     else headerHost.appendChild(next);
+  }
+
+  /** Fetched first, so a report that cannot be rendered is an explained message, not a dead download. */
+  async function downloadReport(button) {
+    if (button.disabled) return;
+    button.disabled = true;
+    try {
+      const { blob, filename } = await api.reportFile(detail.id);
+      const url = URL.createObjectURL(blob);
+      const link = h("a", { href: url, download: filename });
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      setTimeout(() => URL.revokeObjectURL(url), 30000);
+    } catch (error) {
+      toast(errorText(error, "The PDF report could not be prepared. Try again."), "error");
+    } finally {
+      button.disabled = false;
+    }
   }
 
   function evidenceList(finding) {
     const reasons = asList(finding && finding.verdict_reasons);
     if (!reasons.length) return null;
-    return h("ul.evidence", reasons.map((text) => h("li", icon("chevronRight", { size: 12 }), h("span", text))));
+    return h("ul.evidence", reasons.map((text) => h("li", icon("chevronRight", { size: 12 }), h("span", cleanText(text)))));
   }
 
   function renderVerdict() {
@@ -224,7 +243,7 @@ export async function mountIncident(root, params) {
             type: "button",
             dataset: { finding: item.id },
             "aria-pressed": item.id === selectedFindingId ? "true" : "false",
-          }, categoryLabel(item.category) || "Region")))
+          }, [categoryLabel(item.category) || "Region", formatArea(item.area_m2)].filter(Boolean).join(" · "))))
         : null,
       h("h3.section-label", "Why this verdict"),
       evidenceList(finding) || h("p.muted", "No reasons recorded for this finding."),
@@ -574,8 +593,13 @@ export async function mountIncident(root, params) {
       return;
     }
     const group = L().featureGroup();
-    const areaGeometry = store.areas.get((detail.area || {}).id)?.geometry;
-    if (areaGeometry) L().geoJSON(areaGeometry, { interactive: false, style: () => polygonStyle("#c4cdd6", { fillOpacity: 0, weight: 1.5 }) }).addTo(group);
+    const drawBoundary = (geometry) => {
+      if (geometry && smallMap) L().geoJSON(geometry, { interactive: false, style: () => polygonStyle("#c4cdd6", { fillOpacity: 0, weight: 1.5 }) }).addTo(group);
+    };
+    const areaId = (detail.area || {}).id;
+    const known = store.areas.get(areaId);
+    if (known) drawBoundary(known.geometry);
+    else if (areaId) api.area(areaId).then((area) => { if (!disposed) drawBoundary(area.geometry); }).catch(() => {});
     selectionLayer = L().featureGroup();
     for (const finding of asList(detail.findings)) {
       const geometry = findingGeometry(finding);

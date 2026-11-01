@@ -2,7 +2,7 @@
 // patch themselves. Polling and SSE feed the same functions, so a poll with no change emits nothing.
 
 import { api, asList } from "./api.js";
-import { channelLabel, dispatchStatusLabel, isFinalRun, verdictHeadline } from "./format.js";
+import { channelLabel, cleanText, dispatchStatusLabel, isFinalRun, verdictHeadline } from "./format.js";
 
 const listeners = new Map();
 const pendingTopics = new Set();
@@ -97,6 +97,16 @@ export function sortedAlerts() {
     const right = Date.parse(alertTime(b) || "") || 0;
     return right - left;
   });
+}
+
+/** Newest real scene across sites and the provider, so an archive replay never makes it look older. */
+export function newestSceneDate() {
+  let best = store.overview && store.overview.provider ? store.overview.provider.last_scene_at : null;
+  for (const area of store.areas.values()) {
+    const date = area.last_scene && area.last_scene.date;
+    if (date && (!best || String(date).slice(0, 10) > String(best).slice(0, 10))) best = date;
+  }
+  return best;
 }
 
 export function sortedAreas() {
@@ -224,7 +234,7 @@ export function pushActivity(item) {
 /** Server activity lines are logs, some with raw channel and status codes. Show them as sentences. */
 function readableActivity(row) {
   const match = /^([A-Z_]+) to (.+): ([A-Z_]+)$/.exec(row.text || "");
-  if (!match) return row;
+  if (!match) return { ...row, text: cleanText(row.text) };
   return { ...row, text: `${channelLabel(match[1])} to ${match[2]}: ${dispatchStatusLabel(match[3])}` };
 }
 

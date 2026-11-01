@@ -5,7 +5,7 @@
 import { h, morph, reconcile, setText } from "../dom.js";
 import { icon } from "../icons.js";
 import {
-  categoryLabel, formatArea, formatClock, formatCount, formatShortDate, healthLabel, runLabel, siteTypeLabel, verdictLabel,
+  categoryLabel, cleanText, formatArea, formatClock, formatCount, formatShortDate, healthLabel, runLabel, siteTypeLabel, verdictLabel,
 } from "../format.js";
 import {
   activityFeed, alertPlace, alertPlaceFull, alertTime, isOpenAlert, on, refreshAll, sortedAlerts, sortedAreas, store,
@@ -177,7 +177,7 @@ export function createOperationsView(root) {
           open > 0 ? h("span.count-badge", { title: `${open} open ${open === 1 ? "alert" : "alerts"}` }, open) : null),
         meta ? h("span.site-meta", meta) : null,
         live
-          ? h("span.site-run", h("span.site-run-text", run.message || runLabel(run.stage) || "Checking"), progressBar(run.progress_percent, { label: `Check progress for ${area.name}` }))
+          ? h("span.site-run", h("span.site-run-text", run.origin === "archive_replay" ? "Archive replay: " : "", cleanText(run.message) || runLabel(run.stage) || "Checking"), progressBar(run.progress_percent, { label: `Check progress for ${area.name}` }))
           : h("span.site-meta.site-scene", scene ? `Last scene ${formatShortDate(scene)}` : healthLine(area))));
     return row;
   }

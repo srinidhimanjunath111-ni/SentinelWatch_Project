@@ -103,7 +103,20 @@ export const api = {
 
   cases: (params) => request(`/api/cases${query(params)}`),
   case: (caseId) => request(`/api/cases/${id(caseId)}`),
-  reportUrl: (caseId) => `/api/cases/${id(caseId)}/report`,
+  async reportFile(caseId) {
+    let response;
+    try {
+      response = await fetch(`/api/cases/${id(caseId)}/report`);
+    } catch {
+      throw new ApiError("Cannot reach the SentinelWatch server.", 0);
+    }
+    if (!response.ok) {
+      const body = await response.json().catch(() => null);
+      throw new ApiError(detailMessage(body, response.status), response.status);
+    }
+    const match = /filename="?([^";]+)"?/.exec(response.headers.get("Content-Disposition") || "");
+    return { blob: await response.blob(), filename: match ? match[1] : "sentinelwatch-report.pdf" };
+  },
 
   departments: () => request("/api/departments"),
   inbox: (departmentId) => request(`/api/departments/${id(departmentId)}/inbox`),
