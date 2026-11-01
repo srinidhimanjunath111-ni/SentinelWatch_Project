@@ -581,12 +581,19 @@ a.scene-link:hover .imgbox { box-shadow: 0 0 0 1px var(--text-2); }
 .draw-form, .zones-side { background: var(--surface); border-left: 1px solid var(--line); padding: 1rem; overflow-y: auto; display: flex; flex-direction: column; gap: 0.75rem; }
 .checks { padding: 0; }
 .zone-form { padding-top: 0.75rem; border-top: 1px solid var(--line); }
-.zone-row { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: start; border-bottom: 1px solid var(--line); }
-.zone-main { display: flex; flex-direction: column; gap: 0.0625rem; text-align: left; padding: 0.5rem 0.25rem; background: transparent; border: 0; cursor: pointer; min-width: 0; }
+.zone-row { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: start; border-bottom: 1px solid var(--line); padding-bottom: 0.375rem; }
+.zone-main { display: flex; flex-direction: column; align-items: flex-start; gap: 0.125rem; text-align: left; padding: 0.5rem 0.25rem 0.125rem; background: transparent; border: 0; cursor: pointer; min-width: 0; }
 .zone-main:hover .zone-name { text-decoration: underline; }
-.zone-top { display: flex; align-items: center; gap: 0.5rem; flex-wrap: wrap; }
+.zone-tags { display: flex; gap: 0.375rem; flex-wrap: wrap; }
+.zone-tags:empty { display: none; }
 .zone-name { font-weight: 500; }
 .zone-meta { color: var(--text-3); font-size: 0.923rem; overflow-wrap: anywhere; }
+.zone-more { grid-column: 1 / -1; padding: 0 0.25rem; font-size: 0.923rem; }
+.zone-more summary { color: var(--text-3); cursor: pointer; }
+.zone-more summary:hover { color: var(--text-2); }
+.zone-more p { margin-top: 0.25rem; }
+.zone-more a { display: inline; }
+.zone-more a .icon { display: inline-block; vertical-align: -2px; margin-left: 0.25rem; }
 
 /* ------------------------------------------------------------- departments */
 

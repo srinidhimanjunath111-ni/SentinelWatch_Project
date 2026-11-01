@@ -373,6 +373,14 @@ export function cleanText(value) {
     .replace(/\b[A-Z]+(?:_[A-Z]+)+\b/g, (token) => humanise(token).toLowerCase());
 }
 
+/** A permit reference may read "Order, 2023: https://...". Split it so the link is a link. */
+export function splitReference(value) {
+  const text = String(value || "").trim();
+  const match = /^(.*?)[:\s]*(https?:\/\/\S+)\s*$/i.exec(text);
+  if (!match) return { label: text, url: null };
+  return { label: match[1].trim() || "Source document", url: match[2] };
+}
+
 /** Human-readable error text. Never leak a stack trace or a raw validation object. */
 export function errorText(error, fallback = "Something went wrong. Try again.") {
   const message = error && error.message ? String(error.message) : "";

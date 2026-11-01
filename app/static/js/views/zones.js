@@ -3,7 +3,7 @@
 import { h, reconcile } from "../dom.js";
 import { api, asList } from "../api.js";
 import { icon } from "../icons.js";
-import { ZONE_TYPES, errorText, formatArea, formatDate, zoneTypeLabel } from "../format.js";
+import { ZONE_TYPES, errorText, formatArea, formatDate, parseDate, splitReference, zoneTypeLabel } from "../format.js";
 import { createDrawer, createMap, geodesicAreaKm2, geometryBounds, INDIA_BOUNDS, polygonStyle, fitTo } from "../map.js";
 import { confirmModal, emptyState, errorState, illustrativeTag, skeletonRows, toast } from "../ui.js";
 
@@ -106,18 +106,42 @@ export async function mountZones(root) {
     if (map && bounds) map.flyToBounds(bounds, { padding: [40, 40], maxZoom: 15, duration: 0.9 });
   }
 
+  function validityLine(zone) {
+    const from = formatDate(zone.valid_from);
+    const to = formatDate(zone.valid_to);
+    if (from && to) return `Valid ${from} to ${to}`;
+    if (from) return `Valid from ${from}, expiry not on record`;
+    if (to) return `Valid to ${to}`;
+    return "";
+  }
+
+  function isExpired(zone) {
+    const end = parseDate(zone.valid_to);
+    return Boolean(end) && end.getTime() < Date.now();
+  }
+
   function renderZone(zone) {
-    const validity = [zone.valid_from ? formatDate(zone.valid_from) : null, zone.valid_to ? formatDate(zone.valid_to) : null].filter(Boolean).join(" to ");
+    const reference = splitReference(zone.reference);
+    const hasMore = reference.label || zone.source;
     return h("li.zone-row",
       h("button.zone-main", { type: "button", onclick: () => focusZone(zone.id) },
-        h("span.zone-top",
-          h("span.zone-name", zone.name),
-          zone.is_illustrative ? illustrativeTag() : null),
+        h("span.zone-name", zone.name),
+        h("span.zone-tags",
+          zone.is_illustrative ? illustrativeTag() : null,
+          isExpired(zone) ? h("span.tag.tag-status", "Expired") : null),
         h("span.zone-meta", [zoneTypeLabel(zone.zone_type), zone.authority].filter(Boolean).join(" · ")),
-        zone.reference ? h("span.zone-meta.mono", zone.reference) : null,
-        validity ? h("span.zone-meta", validity) : null,
-        zone.source ? h("span.zone-meta", zone.source) : null),
-      h("button.icon-btn", { type: "button", "aria-label": `Remove ${zone.name}`, title: "Remove zone", onclick: () => removeZone(zone.id) }, icon("trash", { size: 14 })));
+        validityLine(zone) ? h("span.zone-meta", validityLine(zone)) : null),
+      h("button.icon-btn", { type: "button", "aria-label": `Remove ${zone.name}`, title: "Remove zone", onclick: () => removeZone(zone.id) }, icon("trash", { size: 14 })),
+      hasMore
+        ? h("details.zone-more",
+          h("summary", "Reference and source"),
+          reference.label
+            ? h("p.zone-meta", reference.url
+              ? h("a", { href: reference.url, target: "_blank", rel: "noopener noreferrer" }, reference.label, icon("external", { size: 12 }))
+              : reference.label)
+            : null,
+          zone.source ? h("p.zone-meta", zone.source) : null)
+        : null);
   }
 
   function syncLayers() {

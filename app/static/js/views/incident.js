@@ -5,7 +5,7 @@ import { api, asList } from "../api.js";
 import { icon } from "../icons.js";
 import {
   categoryLabel, channelLabel, cleanText, dispatchLine, errorText, formatArea, formatDate, formatDateTime, formatLatency, formatPercent, formatSigned,
-  humanise, isNum, landcoverLabel, statusLabel, verdictHeadline, verdictLabel, zoneTypeLabel,
+  humanise, isNum, landcoverLabel, splitReference, statusLabel, verdictHeadline, verdictLabel, zoneTypeLabel,
 } from "../format.js";
 import { on, severityRank, store } from "../state.js";
 import { createMap, fitTo, polygonStyle, HEALTH_COLOURS } from "../map.js";
@@ -529,7 +529,7 @@ export async function mountIncident(root, params) {
       h("h3.section-label", "Authorised zones"),
       zones.length
         ? h("ul.context-list", zones.map((zone) => {
-          const item = contextItem(zone.name || "Authorised zone", [zoneTypeLabel(zone.zone_type), zone.authority, zone.reference]);
+          const item = contextItem(zone.name || "Authorised zone", [zoneTypeLabel(zone.zone_type), zone.authority, splitReference(zone.reference).label], splitReference(zone.reference).url);
           if (zone.is_illustrative) item.appendChild(illustrativeTag());
           return item;
         }))

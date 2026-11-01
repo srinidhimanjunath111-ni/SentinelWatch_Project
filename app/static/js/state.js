@@ -243,13 +243,28 @@ export function pushActivity(item) {
   emit("overview");
 }
 
+/**
+ * Activity lines from the server may not state their origin. Tie each to the record it describes so
+ * replay work is not read as live. Used only when the line has no origin of its own.
+ */
+function inferOrigin(row) {
+  if (row.type === "alert") {
+    return [...store.alerts.values()].find((alert) => alert.title === row.text)?.origin;
+  }
+  if (row.type === "run") {
+    const run = store.areas.get(row.area_id)?.latest_run;
+    return run && run.message && row.text.endsWith(run.message) ? run.origin : undefined;
+  }
+  if (row.type === "dispatch") {
+    const at = Date.parse(row.at) || 0;
+    return [...store.alerts.values()].find((alert) => alert.area_id === row.area_id && Math.abs((Date.parse(alert.dispatched_at || "") || 0) - at) < 5000)?.origin;
+  }
+  return undefined;
+}
+
 /** Server activity lines are logs, some with raw channel and status codes. Show them as sentences. */
 function readableActivity(input) {
-  let row = input;
-  if (!row.origin && row.type === "alert") {
-    const match = [...store.alerts.values()].find((alert) => alert.title === row.text);
-    if (match) row = { ...row, origin: match.origin };
-  }
+  const row = input.origin ? input : { ...input, origin: inferOrigin(input) };
   const match = /^([A-Z_]+) to (.+): ([A-Z_]+)$/.exec(row.text || "");
   if (!match) return { ...row, text: cleanText(row.text) };
   return { ...row, text: `${channelLabel(match[1])} to ${match[2]}: ${dispatchStatusLabel(match[3])}` };
