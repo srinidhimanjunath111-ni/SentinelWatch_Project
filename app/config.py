@@ -92,6 +92,8 @@ class Settings:
     )
     heavy_rain_mm_14d = float(os.getenv("HEAVY_RAIN_MM_14D", "100"))
     extreme_rain_mm_14d = float(os.getenv("EXTREME_RAIN_MM_14D", "200"))
+    # Review routing near approximate footprints, never an extension of authorisation.
+    illustrative_zone_review_buffer_m = float(os.getenv("ILLUSTRATIVE_ZONE_REVIEW_BUFFER_M", "1000"))
 
     # Dispatch.
     smtp_host = os.getenv("SMTP_HOST", "").strip()

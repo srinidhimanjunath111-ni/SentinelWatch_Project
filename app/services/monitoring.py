@@ -11,7 +11,7 @@ from __future__ import annotations
 import json
 import logging
 import threading
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from datetime import date, datetime, timedelta
 from math import ceil
 from typing import Any
@@ -697,12 +697,29 @@ def _active_zones(
             if not geometry:
                 continue
             mask = rasterize_geometry(geometry, grid)
+            review_mask = None
+            if zone.is_illustrative and settings.illustrative_zone_review_buffer_m > 0:
+                from scipy.ndimage import distance_transform_edt
+
+                radius = settings.illustrative_zone_review_buffer_m
+                padding = int(np.ceil(radius / grid.pixel_size)) + 1
+                # Include footprints just outside the AOI rather than buffering a clipped
+                # outline. Distances are metres on the same UTM grid as the imagery.
+                expanded = replace(
+                    grid, west=grid.west - padding * grid.pixel_size,
+                    north=grid.north + padding * grid.pixel_size,
+                    width=grid.width + 2 * padding, height=grid.height + 2 * padding,
+                )
+                footprint = rasterize_geometry(geometry, expanded)
+                if footprint.any():
+                    distance = distance_transform_edt(~footprint, sampling=grid.pixel_size)
+                    review_mask = distance[padding:-padding, padding:-padding] <= radius
         except Exception as error:
             logger.warning("Ignoring unusable authorised zone %s: %s", zone.id, error)
             continue
-        if mask.any():
+        if mask.any() or (review_mask is not None and review_mask.any()):
             payload = zone_payload(zone)
-            matched.append({"zone": payload, "mask": mask})
+            matched.append({"zone": payload, "mask": mask, "review_mask": review_mask})
             public.append({key: value for key, value in payload.items() if key != "geometry"})
     return matched, public
 

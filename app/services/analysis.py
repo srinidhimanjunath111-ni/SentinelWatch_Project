@@ -841,11 +841,21 @@ def assess_region(
                     "This zone's footprint is marked illustrative: an approximate outline, not an official boundary."
                 )
         else:
-            verdict = SUSPECTED_UNAUTHORISED
-            reasons.append(
-                "No registered authorisation covers this region. That is an absence of record, "
-                "not proof of illegality, and it needs field verification."
-            )
+            nearby = _illustrative_zone_nearby(region, category, context)
+            if nearby is not None:
+                verdict = NEEDS_REVIEW
+                reasons.append(
+                    f'This change is next to or partly inside the registered zone "{nearby["zone"].get("name")}". '
+                    "Its footprint is illustrative, not an official boundary. Our review buffer "
+                    "flags boundary uncertainty; it does not extend the authorisation. Verify "
+                    "the actual boundary before assessing whether this activity is covered."
+                )
+            else:
+                verdict = SUSPECTED_UNAUTHORISED
+                reasons.append(
+                    "No registered authorisation covers this region. That is an absence of record, "
+                    "not proof of illegality, and it needs field verification."
+                )
     elif category in ("FLOOD", "LANDSLIDE", "BURN_SCAR"):
         verdict = NATURAL_EVENT
     else:
@@ -934,6 +944,23 @@ def _authorising_zone(
         if category not in ZONE_AUTHORISES.get(zone_type, frozenset()):
             continue
         if float(np.mean(item["mask"][region])) >= AUTHORISED_OVERLAP:
+            return item
+    return None
+
+
+def _illustrative_zone_nearby(
+    region: np.ndarray, category: str, context: AssessmentContext
+) -> dict[str, Any] | None:
+    """Approximate matching footprints warrant review, never presumed authorisation."""
+
+    for item in context.zones:
+        detail = item["zone"]
+        if not detail.get("is_illustrative"):
+            continue
+        if category not in ZONE_AUTHORISES.get(detail.get("zone_type"), frozenset()):
+            continue
+        nearby = item.get("review_mask")
+        if np.any(item["mask"][region]) or (nearby is not None and np.any(nearby[region])):
             return item
     return None
 

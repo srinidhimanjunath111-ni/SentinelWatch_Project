@@ -253,6 +253,28 @@ def test_zone_not_yet_valid_on_the_after_scene_date_does_not_authorise():
     assert _rows(Alert)[0].verdict == "SUSPECTED_UNAUTHORISED"
 
 
+def test_illustrative_zone_outside_aoi_has_metric_review_buffer_only():
+    from app.satellite.geometry import bbox_polygon
+    from app.satellite.grid import build_grid
+    from app.services.monitoring import _active_zones
+
+    west, south, east, north = BBOX
+    _zone(
+        is_illustrative=True,
+        geometry_json=json.dumps(bbox_polygon([east + 0.001, south, east + 0.003, north])),
+        valid_from=str(days_ago(400)), valid_to=str(days_ago(-400)),
+    )
+    db = SessionLocal()
+    try:
+        zones, public = _active_zones(db, build_grid(bbox_polygon(BBOX)), AFTER)
+        assert len(zones) == len(public) == 1
+        assert not zones[0]["mask"].any(), "Nearby is never an authorising overlap"
+        assert zones[0]["review_mask"].any()
+        assert _active_zones(db, build_grid(bbox_polygon(BBOX)), days_ago(500)) == ([], [])
+    finally:
+        db.close()
+
+
 def test_malformed_stored_zone_date_is_skipped_and_the_run_completes():
     _zone(valid_from="2026-99-99")
     install({AFTER: Scene(FOREST, BARE), BEFORE: Scene(FOREST), REFERENCE: Scene(FOREST)})

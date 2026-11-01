@@ -491,3 +491,35 @@ def test_short_pair_browning_with_positive_seasonal_match_is_benign():
         context=AssessmentContext(site_type="infrastructure", rainfall=Rainfall(gap_days=25)),
     )
     assert assessment.verdict == "SEASONAL_BENIGN"
+
+
+def test_illustrative_matching_boundary_uncertainty_goes_to_review():
+    corner = np.zeros(SHAPE, dtype=bool)
+    corner[30:33, 30:33] = True
+    item = {"zone": _zone(is_illustrative=True)["zone"], "mask": corner}
+    context = AssessmentContext(zones=[item])
+    assessment = _assess(
+        _scene(FOREST), _scene(FOREST, BARE), from_class=TREE, to_class=MINE, context=context,
+    )
+    assert assessment.verdict == "NEEDS_REVIEW"
+    assert any("boundary uncertainty" in reason for reason in assessment.reasons)
+
+    # Adjacent, without any overlap; the supplied buffer is only a review-routing mask.
+    item["mask"] = np.zeros(SHAPE, dtype=bool)
+    item["review_mask"] = PATCH
+    assert _assess(
+        _scene(FOREST), _scene(FOREST, BARE), from_class=TREE, to_class=MINE, context=context,
+    ).verdict == "NEEDS_REVIEW"
+
+
+def test_illustrative_review_buffer_does_not_cover_distant_or_wrong_type_activity():
+    for zone_type, review_mask in (("CONSTRUCTION", PATCH), ("MINING", ~PATCH)):
+        item = {
+            "zone": _zone(zone_type, is_illustrative=True)["zone"],
+            "mask": np.zeros(SHAPE, dtype=bool), "review_mask": review_mask,
+        }
+        assessment = _assess(
+            _scene(FOREST), _scene(FOREST, BARE), from_class=TREE, to_class=MINE,
+            context=AssessmentContext(zones=[item]),
+        )
+        assert assessment.verdict == "SUSPECTED_UNAUTHORISED"
