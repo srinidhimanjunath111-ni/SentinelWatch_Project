@@ -306,7 +306,7 @@ export async function mountIncident(root, params) {
     actionsHost.replaceChildren();
     const alert = currentAlert();
     if (!alert) {
-      actionsHost.append(h("p.muted", "No alert was raised for this region, so there is nothing to act on."));
+      actionsHost.append(h("p.muted", "No alert is linked to this region, so there is no linked alert to act on."));
       return;
     }
     const available = TRANSITIONS[alert.status] || [];
@@ -381,7 +381,7 @@ export async function mountIncident(root, params) {
             h("td", dispatchLine(row), row.file ? h("a.cell-sub", { href: row.file, target: "_blank", rel: "noopener noreferrer" }, "Saved copy") : null),
             h("td", formatDateTime(row.at || row.created_at)),
             h("td.num", row.triggered_by === "manual" || String(row.channel).toUpperCase() === "IN_APP" ? "" : formatLatency(alert && alert.latency_seconds)))))))
-        : h("p.panel-empty", alert ? "Nothing has been dispatched for this alert." : "No alert was raised for this region, so nothing was dispatched."));
+        : h("p.panel-empty", alert ? "Nothing has been dispatched for this alert." : "No alert is linked to this region."));
     if (dispatchHost.firstElementChild) morph(dispatchHost.firstElementChild, next);
     else dispatchHost.appendChild(next);
   }
