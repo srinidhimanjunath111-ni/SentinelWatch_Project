@@ -1,0 +1,32 @@
+[
+  {
+    "name": "Noida International Airport, Jewar",
+    "state": "Uttar Pradesh",
+    "district": "Gautam Buddha Nagar",
+    "site_type": "infrastructure",
+    "categories": [
+      "CONSTRUCTION",
+      "URBANISATION",
+      "OTHER_CHANGE"
+    ],
+    "description": "Airport runway and terminal construction replacing agricultural fields; public environmental clearance on record. Registered platform boundary is approximate.",
+    "bbox": [
+      77.585,
+      28.145,
+      77.635,
+      28.195
+    ],
+    "interval": 720,
+    "sources": [
+      {
+        "title": "MoEFCC environmental clearance, 9 March 2020",
+        "url": "https://media.niairport.in/-/jssmedia/dxn/portal/documents/environment-clearance-compliance/environment-clearance-approval.pdf"
+      }
+    ],
+    "replay": {
+      "start_date": "2021-03-20",
+      "end_date": "2025-03-24",
+      "note": "AUTHORISED_ACTIVITY expected from inspected pair; The pair brackets multi-year construction, not a single-day event. Nearby fields also change with crops. Only CONSTRUCTION inside the illustrative registered platform should match the zone; the document does not establish compliance with every condition."
+    }
+  }
+]

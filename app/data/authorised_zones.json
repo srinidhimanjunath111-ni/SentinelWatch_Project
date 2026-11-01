@@ -1,1 +1,39 @@
-[]
+[
+  {
+    "name": "Noida International Airport, Jewar — illustrative activity footprint",
+    "zone_type": "CONSTRUCTION",
+    "geometry": {
+      "type": "Polygon",
+      "coordinates": [
+        [
+          [
+            77.587,
+            28.163
+          ],
+          [
+            77.632,
+            28.16
+          ],
+          [
+            77.634,
+            28.184
+          ],
+          [
+            77.589,
+            28.189
+          ],
+          [
+            77.587,
+            28.163
+          ]
+        ]
+      ]
+    },
+    "authority": "Ministry of Environment, Forest and Climate Change",
+    "reference": "Jewar EC, 9 March 2020: https://media.niairport.in/-/jssmedia/dxn/portal/documents/environment-clearance-compliance/environment-clearance-approval.pdf",
+    "valid_from": "2020-03-09",
+    "valid_to": null,
+    "source": "Approximate developed platform traced from inspected Sentinel-2, 24 March 2025; not an official EC boundary. EC expiry not established; null is unknown.",
+    "is_illustrative": true
+  }
+]
