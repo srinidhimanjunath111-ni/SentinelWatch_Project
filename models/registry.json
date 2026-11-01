@@ -1,0 +1,89 @@
+{
+  "generated_at": "2026-11-01T19:34:59.249812Z",
+  "models": [
+    {
+      "key": "change",
+      "name": "SentinelWatch change detector",
+      "version": "v1",
+      "architecture": "Siamese U-Net, shared encoder, absolute-difference fusion, base 32 channels",
+      "parameters": 3129825,
+      "status": "READY",
+      "checkpoint": "models/checkpoints/change_siamese.pt",
+      "checkpoint_sha256": "94d3b03b693c307c7852566057b0327c2c7bf52257a6ffcd3bbeba016f15c731",
+      "checkpoint_bytes": 12560005,
+      "input_bands": [
+        "B02",
+        "B03",
+        "B04",
+        "B08",
+        "B11",
+        "B12"
+      ],
+      "normalisation": "pair_band_median_iqr_v1",
+      "trained_at": "2026-11-01T18:55:55.007280+00:00",
+      "device": "mps",
+      "epochs": 15,
+      "steps": 400,
+      "training_seconds": 2098.604171291001,
+      "threshold": 0.95,
+      "datasets": [
+        {
+          "name": "Onera Satellite Change Detection (OSCD)",
+          "url": "https://rcdaudt.github.io/oscd/",
+          "licence": "Change maps CC BY-NC-SA 4.0 (academic use); imagery Copernicus Sentinel-2 open data",
+          "role": "train",
+          "samples": 12
+        },
+        {
+          "name": "Onera Satellite Change Detection (OSCD)",
+          "url": "https://rcdaudt.github.io/oscd/",
+          "licence": "Change maps CC BY-NC-SA 4.0 (academic use); imagery Copernicus Sentinel-2 open data",
+          "role": "val",
+          "samples": 2
+        },
+        {
+          "name": "Onera Satellite Change Detection (OSCD)",
+          "url": "https://rcdaudt.github.io/oscd/",
+          "licence": "Change maps CC BY-NC-SA 4.0 (academic use); imagery Copernicus Sentinel-2 open data",
+          "role": "test",
+          "samples": 10
+        }
+      ],
+      "metrics": {
+        "split": "test",
+        "f1": 0.24751692470404674,
+        "iou": 0.14123784029255002,
+        "precision": 0.7406003258553704,
+        "recall": 0.14858841944467144,
+        "accuracy": 0.9533066964355335,
+        "per_dataset": {
+          "oscd_test": {
+            "f1": 0.24751692470404674,
+            "iou": 0.14123784029255002,
+            "precision": 0.7406003258553704,
+            "recall": 0.14858841944467144,
+            "accuracy": 0.9533066964355335
+          },
+          "oscd_test__v1": {
+            "f1": 0.24751692470404674,
+            "iou": 0.14123784029255002,
+            "precision": 0.7406003258553704,
+            "recall": 0.14858841944467144,
+            "accuracy": 0.9533066964355335
+          }
+        }
+      },
+      "artifacts": {
+        "learning_curve": "reports/ml/change_v1_training_curve.png",
+        "confusion_matrix": "reports/ml/change_v1_oscd_test_confusion.png",
+        "samples": "reports/ml/change_v1_oscd_test_samples.png"
+      },
+      "limitations": [
+        "OSCD is urban and mostly outside India (one Indian city, Mumbai), so urban results do not transfer automatically to Indian forest, mining or rural change.",
+        "OSCD imagery is Sentinel-2 L1C while live imagery is L2A. Per-pair per-band normalisation reduces this shift but does not remove it, and no OSCD-style pixel labels exist on L2A to measure the residual.",
+        "OSCD has 24 pairs. The test set is 10 cities and validation is only 2, so metrics and the tuned threshold carry real sampling uncertainty.",
+        "The model reports physical change only. It cannot determine cause or legality."
+      ]
+    }
+  ]
+}

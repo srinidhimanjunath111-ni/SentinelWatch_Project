@@ -1,8 +1,8 @@
-"""Compact shared-encoder Siamese U-Net for bitemporal change segmentation.
+"""Shared-encoder Siamese U-Net (FC-Siam-diff style) for bitemporal change segmentation.
 
-The model uses one encoder for both acquisition dates (weight sharing), fuses the
-absolute feature differences at four scales, and decodes a single change logit.
-It is intentionally small enough for a final-year project laptop baseline.
+One encoder processes both dates (weight sharing), the absolute feature differences at four
+scales are fused, and a decoder produces a single change logit per pixel. Because |a - b| is
+symmetric, the model cannot learn an ordering: swapping the dates gives the same features.
 """
 
 from __future__ import annotations
@@ -32,11 +32,16 @@ class ConvBlock(nn.Module):
 
 
 class Encoder(nn.Module):
-    def __init__(self, base_channels: int = 32):
+    def __init__(self, in_channels: int = 6, base_channels: int = 32):
         super().__init__()
         c = base_channels
         self.blocks = nn.ModuleList(
-            [ConvBlock(3, c), ConvBlock(c, c * 2), ConvBlock(c * 2, c * 4), ConvBlock(c * 4, c * 8)]
+            [
+                ConvBlock(in_channels, c),
+                ConvBlock(c, c * 2),
+                ConvBlock(c * 2, c * 4),
+                ConvBlock(c * 4, c * 8),
+            ]
         )
         self.pool = nn.MaxPool2d(2)
 
@@ -61,12 +66,13 @@ class UpFuse(nn.Module):
 
 
 class SiameseUNet(nn.Module):
-    """Input: two [B, 3, H, W] images. Output: [B, 1, H, W] change logits."""
+    """Input: two [B, C, H, W] images (C=6, contract band order). Output: [B, 1, H, W] logits."""
 
-    def __init__(self, base_channels: int = 32):
+    def __init__(self, in_channels: int = 6, base_channels: int = 32, dropout: float = 0.0):
         super().__init__()
         c = base_channels
-        self.encoder = Encoder(c)
+        self.encoder = Encoder(in_channels, c)
+        self.dropout = nn.Dropout2d(dropout)
         self.bottleneck = ConvBlock(c * 8, c * 8)
         self.up3 = UpFuse(c * 8, c * 4, c * 4)
         self.up2 = UpFuse(c * 4, c * 2, c * 2)
@@ -77,7 +83,7 @@ class SiameseUNet(nn.Module):
         before_features = self.encoder(before)
         after_features = self.encoder(after)
         diffs = [torch.abs(a - b) for a, b in zip(before_features, after_features, strict=True)]
-        x = self.bottleneck(diffs[-1])
+        x = self.bottleneck(self.dropout(diffs[-1]))
         x = self.up3(x, diffs[-2])
         x = self.up2(x, diffs[-3])
         x = self.up1(x, diffs[-4])
