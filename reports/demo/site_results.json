@@ -968,5 +968,32 @@
     "planned_minutes": 45,
     "pid": 41320,
     "sample_interval_seconds": 60
+  },
+  "offline_ui_proof": {
+    "external_browser_requests_blocked": true,
+    "case_loaded": "4f26f148-c1f2-422d-901f-419e71688f1b",
+    "comparison_images": [
+      {
+        "loaded": true,
+        "width": 549
+      },
+      {
+        "loaded": true,
+        "width": 549
+      },
+      {
+        "loaded": true,
+        "width": 549
+      },
+      {
+        "loaded": true,
+        "width": 549
+      }
+    ],
+    "slider_before": "50",
+    "slider_after": "52",
+    "pdf_button_present": true,
+    "pdf_download_valid": true,
+    "blocked_external_request_count": 6
   }
 }
