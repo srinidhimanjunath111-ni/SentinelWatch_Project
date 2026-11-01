@@ -3,7 +3,7 @@
 import { h, setChildren, setText } from "./dom.js";
 import { icon, severityGlyph } from "./icons.js";
 import {
-  categoryLabel, errorText, formatDateTime, parseDate, relativeAge, severityLabel, statusLabel, verdictHeadline,
+  alertGroupLabel, errorText, formatDateTime, parseDate, persistenceLabel, relativeAge, severityLabel, statusLabel,
 } from "./format.js";
 
 export function severityTag(severity) {
@@ -229,6 +229,7 @@ function closeBanner() {
 }
 
 export function showAlertBanner(alerts, placeOf) {
+  alerts = alerts.filter((alert) => alert.event_kind !== "updated");
   if (!alerts.length) return;
   const host = document.getElementById("banner-host");
   const ranked = [...alerts].sort((a, b) => rank(b.severity) - rank(a.severity));
@@ -240,7 +241,7 @@ export function showAlertBanner(alerts, placeOf) {
     h("a.banner-main", { href: lead.case_id ? href : "#/alerts", onclick: () => closeBanner() },
       severityGlyph(lead.severity, 12),
       h("span.banner-sev", severityLabel(lead.severity) || "Alert"),
-      h("span.banner-text", verdictHeadline(lead.verdict, lead.category) || categoryLabel(lead.category)),
+      h("span.banner-text", [alertGroupLabel(lead), persistenceLabel(lead)].filter(Boolean).join(" · ")),
       h("span.banner-place", placeOf(lead)),
       lead.origin === "archive_replay" ? h("span.tag.tag-replay", icon("history", { size: 12 }), "Archive replay") : null,
       extra > 0 ? h("span.banner-more", `+${extra} more`) : null),

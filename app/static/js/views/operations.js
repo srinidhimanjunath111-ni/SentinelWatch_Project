@@ -5,7 +5,7 @@
 import { h, morph, reconcile, setText } from "../dom.js";
 import { icon } from "../icons.js";
 import {
-  categoryLabel, cleanText, formatArea, formatClock, formatCount, formatShortDate, healthLabel, runLabel, siteTypeLabel, verdictLabel,
+  alertGroupLabel, cleanText, formatArea, formatClock, formatCount, formatShortDate, healthLabel, persistenceLabel, runLabel, siteTypeLabel, verdictLabel,
 } from "../format.js";
 import {
   activityFeed, alertPlace, alertPlaceFull, alertTime, isOpenAlert, on, refreshAll, sortedAlerts, sortedAreas, store,
@@ -57,6 +57,7 @@ export function createOperationsView(root) {
     if (map || !L()) return;
     map = createMap(mapEl, { zoomControl: true });
     map.fitBounds(INDIA_BOUNDS, { animate: false });
+    map.on("zoomend moveend", syncMarkerLabels);
     L().control.scale({ imperial: false, position: "bottomleft" }).addTo(map);
   }
 
@@ -109,7 +110,7 @@ export function createOperationsView(root) {
       let marker = null;
       if (Number.isFinite(lat) && Number.isFinite(lon)) {
         marker = L().marker([lat, lon], { icon: markerIcon(area), title: area.name, keyboard: false });
-        marker.bindTooltip(tooltipNode(area.name), { direction: "top", offset: [0, -8], className: "map-tooltip" });
+        marker.bindTooltip(tooltipNode(area.name), { permanent: true, direction: "top", offset: [0, -8], className: "map-tooltip site-map-label" });
         marker.on("click", () => {
           focusArea(area.id);
           highlightSite(area.id);
@@ -124,6 +125,25 @@ export function createOperationsView(root) {
         entry.marker?.remove();
         layers.delete(id);
       }
+    }
+    syncMarkerLabels();
+  }
+
+  function syncMarkerLabels() {
+    if (!map) return;
+    const occupied = [];
+    for (const area of sortedAreas()) {
+      const marker = layers.get(area.id)?.marker;
+      if (!marker) continue;
+      if (map.getZoom() <= 6 || !map.getBounds().contains(marker.getLatLng())) {
+        marker.closeTooltip();
+        continue;
+      }
+      marker.openTooltip();
+      const rect = marker.getTooltip().getElement()?.getBoundingClientRect();
+      if (!rect) continue;
+      if (occupied.some((other) => rect.left < other.right + 6 && rect.right + 6 > other.left && rect.top < other.bottom + 6 && rect.bottom + 6 > other.top)) marker.closeTooltip();
+      else occupied.push(rect);
     }
   }
 
@@ -174,8 +194,9 @@ export function createOperationsView(root) {
       h("a.site-link", { href: `#/site/${encodeURIComponent(area.id)}` },
         h("span.site-top",
           h("span.site-name", area.name),
-          open > 0 ? h("span.count-badge", { title: `${open} open ${open === 1 ? "alert" : "alerts"}` }, open) : null),
+          open > 0 ? h("span.count-badge", { title: `${open} open live ${open === 1 ? "alert" : "alerts"}` }, open) : null),
         meta ? h("span.site-meta", meta) : null,
+        Number(area.replay_alerts) > 0 ? h("span.site-meta", `${formatCount(area.replay_alerts)} replay ${Number(area.replay_alerts) === 1 ? "alert" : "alerts"}`) : null,
         live
           ? h("span.site-run", h("span.site-run-text", run.origin === "archive_replay" ? "Archive replay: " : "", cleanText(run.message) || runLabel(run.stage) || "Checking"), progressBar(run.progress_percent, { label: `Check progress for ${area.name}` }))
           : h("span.site-meta.site-scene", scene ? `Last scene ${formatShortDate(scene)}` : healthLine(area))));
@@ -199,7 +220,7 @@ export function createOperationsView(root) {
       render: renderSite,
       signature: (row) => {
         const { area, run, open } = row;
-        return JSON.stringify([area.name, area.state, area.site_type, area.health, area.status, area.last_scene && area.last_scene.date, open, run && !run.final ? [run.message, run.stage, run.progress_percent, run.origin] : null]);
+        return JSON.stringify([area.name, area.state, area.site_type, area.health, area.status, area.last_scene && area.last_scene.date, open, area.replay_alerts, run && !run.final ? [run.message, run.stage, run.progress_percent, run.origin] : null]);
       },
     });
     if (rows.length) {
@@ -226,8 +247,9 @@ export function createOperationsView(root) {
         h("span.feed-top",
           severityTag(alert.severity),
           relTime(alertTime(alert), "feed-age")),
-        h("span.feed-title", categoryLabel(alert.category) || alert.title || "Change detected"),
+        h("span.feed-title", alertGroupLabel(alert)),
         h("span.feed-place", alertPlaceFull(alert)),
+        persistenceLabel(alert) ? h("span.feed-place", persistenceLabel(alert)) : null,
         h("span.feed-foot",
           alert.verdict ? h("span.feed-verdict", verdictLabel(alert.verdict)) : null,
           replayBadge(alert),
@@ -253,7 +275,7 @@ export function createOperationsView(root) {
     const created = reconcile(feedList, alerts, {
       key: (alert) => alert.id,
       render: renderFeedItem,
-      signature: (alert) => JSON.stringify([alert.severity, alert.category, alert.area_name, alert.verdict, alert.status, alert.origin, alert.thumbnail, alertTime(alert)]),
+      signature: (alert) => JSON.stringify([alert.severity, alert.category, alert.area_name, alert.verdict, alert.status, alert.origin, alert.thumbnail, alertTime(alert), alert.region_count, alert.area_m2, alert.persistence_count]),
     });
     if (feedRendered && created.size) {
       if (top > 2) {
@@ -285,20 +307,22 @@ export function createOperationsView(root) {
 
   // --------------------------------------------------- KPIs and activity
 
-  function kpi(label, value, emphasis = false) {
+  function kpi(label, value, emphasis = false, split = "") {
     return h("div.kpi", { class: emphasis ? "kpi-critical" : null },
       h("dt.kpi-label", label),
-      h("dd.kpi-value", value === "" || value === null || value === undefined ? "–" : value));
+      h("dd.kpi-value", value === "" || value === null || value === undefined ? "–" : value),
+      split ? h("dd.kpi-split", split) : null);
   }
 
   function renderKpis() {
     const counts = (store.overview && store.overview.counts) || null;
+    const split = (key) => counts ? `Live ${formatCount(counts[`${key}_live`]) || "0"} · Replay ${formatCount(counts[`${key}_replay`]) || "0"}` : "Live – · Replay –";
     const next = h("dl.kpi-strip", { "aria-label": "Key figures" },
       kpi("Scenes analysed", counts ? formatCount(counts.scenes_analysed) : ""),
-      kpi("Open alerts", counts ? formatCount(counts.open_alerts) : ""),
+      kpi("Open alerts", counts ? formatCount(counts.open_alerts) : "", false, split("open_alerts")),
       kpi("Critical", counts ? formatCount(counts.critical_alerts) : "", counts && Number(counts.critical_alerts) > 0),
       kpi("Area changed", counts ? formatArea(counts.changed_area_m2) : ""),
-      kpi("Alerts in 24 h", counts ? formatCount(counts.alerts_24h) : ""));
+      kpi("Alerts in 24 h", counts ? formatCount(counts.alerts_24h) : "", false, split("alerts_24h")));
     morph(kpis, next);
   }
 
@@ -311,7 +335,7 @@ export function createOperationsView(root) {
     }
     if (logList.querySelector(".log-empty")) logList.replaceChildren();
     reconcile(logList, rows, {
-      key: (row) => `${row.type}|${row.text}`,
+      key: (row) => `${row.origin || ""}|${row.area_id || ""}|${row.type}|${row.text}`,
       render: (row) => h("li.log-row", { dataset: { type: row.type } },
         h("time.log-time", { datetime: row.at }, formatClock(row.at)),
         row.area_id

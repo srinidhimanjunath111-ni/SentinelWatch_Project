@@ -114,6 +114,15 @@ export async function mountIncident(root, params) {
     const alerts = asList(detail.alerts);
     const loaded = await Promise.all(alerts.map((alert) => api.alert(alert.id).catch(() => alert)));
     alertDetails = new Map(loaded.map((alert) => [alert.id, alert]));
+    // Region membership comes from the grouped alert; reasons and geometry come from its finding.
+    const findings = new Map(asList(detail.findings).map((finding) => [finding.id, finding]));
+    for (const alert of loaded) {
+      for (const region of asList(alert.regions)) {
+        const finding = findings.get(region.finding_id);
+        if (finding) findings.set(finding.id, { ...finding, ...region, alert_id: alert.id });
+      }
+    }
+    detail.findings = orderFindings([...findings.values()]);
   }
 
   function sortFindings(findings) {
@@ -128,7 +137,12 @@ export async function mountIncident(root, params) {
   function currentAlert() {
     const finding = currentFinding();
     if (!finding) return primaryAlert();
-    return [...alertDetails.values()].find((alert) => alert.finding_id === finding.id) || null;
+    return alertForFinding(finding);
+  }
+
+  function alertForFinding(finding) {
+    return alertDetails.get(finding.alert_id) || [...alertDetails.values()].find((alert) =>
+      asList(alert.regions).some((region) => region.finding_id === finding.id) || alert.finding_id === finding.id) || null;
   }
 
   function selectFinding(id) {
@@ -138,12 +152,20 @@ export async function mountIncident(root, params) {
     renderDispatch();
     renderRegions();
     syncSelection();
+    const finding = currentFinding();
+    if (smallMap && isNum(finding?.centroid_lat) && isNum(finding?.centroid_lon)) {
+      smallMap.flyTo([Number(finding.centroid_lat), Number(finding.centroid_lon)], Math.max(15, smallMap.getZoom()), {
+        animate: !window.matchMedia("(prefers-reduced-motion: reduce)").matches,
+        duration: 0.6,
+      });
+    }
   }
 
   /** Regions with an alert lead; the rest sort by severity, then size. */
   function orderFindings(findings) {
-    const alerted = new Set(asList(detail.alerts).map((alert) => alert.finding_id));
-    return sortFindings(findings).sort((a, b) => Number(alerted.has(b.id)) - Number(alerted.has(a.id)));
+    const alerts = alertDetails.size ? [...alertDetails.values()] : asList(detail.alerts);
+    const alerted = new Set(alerts.flatMap((alert) => [alert.finding_id, ...asList(alert.regions).map((region) => region.finding_id)]));
+    return sortFindings(findings).sort((a, b) => Number(Boolean(b.alert_id) || alerted.has(b.id)) - Number(Boolean(a.alert_id) || alerted.has(a.id)));
   }
 
   // ------------------------------------------------------ sections
@@ -221,12 +243,12 @@ export async function mountIncident(root, params) {
     const transition = finding && finding.transition;
     const hasTransition = transition && (transition.from || transition.to);
     const indices = (finding && finding.indices) || {};
-    const alertIds = new Set([...alertDetails.values()].map((item) => item.finding_id));
-    const alertedFindings = asList(detail.findings).filter((item) => alertIds.has(item.id));
+    const alertedFindings = asList(detail.findings).filter((item) => alertForFinding(item));
 
     const next = h("section.verdict", { dataset: { severity: String(severity || "none").toLowerCase() }, "aria-label": "Verdict" },
       h("div.verdict-top", severityTag(severity), alert ? statusTag(alert.status) : null),
       h("h2.verdict-title", verdictHeadline(verdict, category)),
+      alert && Number(alert.region_count) > 1 ? h("p.muted", `${alert.region_count} regions · ${formatArea(alert.area_m2)} total`) : null,
       h("dl.verdict-facts",
         h("div.verdict-fact", h("dt", "Changed area"), h("dd", formatArea(areaM2) || "–")),
         h("div.verdict-fact", h("dt", "Confidence"), h("dd", formatPercent(confidence) || "–")),
@@ -246,7 +268,7 @@ export async function mountIncident(root, params) {
           }, [categoryLabel(item.category) || "Region", formatArea(item.area_m2)].filter(Boolean).join(" · "))))
         : null,
       h("h3.section-label", "Why this verdict"),
-      evidenceList(finding) || h("p.muted", "No reasons recorded for this finding."),
+      evidenceList(finding) || evidenceList(alert) || h("p.muted", "No reasons recorded for this finding."),
       indicesRow(indices),
       h("p.screening-note", "Screening result for department verification. A satellite cannot determine legality."));
     if (verdictHost.firstElementChild) morph(verdictHost.firstElementChild, next);
@@ -424,8 +446,7 @@ export async function mountIncident(root, params) {
       regionsHost.replaceChildren();
       return;
     }
-    const alertIds = new Set([...alertDetails.values()].map((item) => item.finding_id));
-    const quiet = findings.filter((item) => !alertIds.has(item.id));
+    const quiet = findings.filter((item) => !alertForFinding(item));
     const benign = quiet.filter((item) => item.verdict === "SEASONAL_BENIGN").length;
     const summary = benign
       ? `${benign} of ${findings.length} regions read as seasonal or crop cycle and raised no alert.`
@@ -444,7 +465,7 @@ export async function mountIncident(root, params) {
           const to = landcoverLabel(item.transition && item.transition.to);
           return h("tr.row-link", { dataset: { finding: item.id }, class: item.id === selectedFindingId ? "is-selected" : null },
             h("td", h("button.link-btn", { type: "button", dataset: { finding: item.id }, "aria-pressed": item.id === selectedFindingId ? "true" : "false" },
-              alertIds.has(item.id) ? h("span.region-alert", icon("bell", { size: 12 })) : null,
+              alertForFinding(item) ? h("span.region-alert", icon("bell", { size: 12 })) : null,
               categoryLabel(item.category) || "Region")),
             h("td", verdictLabel(item.verdict)),
             h("td", from && to ? (from === to ? to : `${from} to ${to}`) : ""),
@@ -639,7 +660,7 @@ export async function mountIncident(root, params) {
       headerHost,
       h("div.incident-top",
         h("div.incident-left",
-          h("div.cmp-wrap", compareEl),
+          compareEl,
           toolbarHost),
         h("div.incident-right",
           verdictHost,
@@ -687,6 +708,7 @@ export async function mountIncident(root, params) {
     renderVerdict();
     renderActions();
     renderDispatch();
+    renderRegions();
   }, 250);
 
   cleanups.push(on("dispatch-event", (event) => {
@@ -696,7 +718,7 @@ export async function mountIncident(root, params) {
     if (!detail) return;
     for (const [id, local] of alertDetails) {
       const fresh = store.alerts.get(id);
-      if (fresh && fresh.status !== local.status) {
+      if (fresh && ["status", "region_count", "area_m2", "persistence_count", "last_seen_at"].some((key) => fresh[key] !== local[key])) {
         refreshAlerts();
         break;
       }

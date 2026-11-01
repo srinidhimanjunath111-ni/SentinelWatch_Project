@@ -4,7 +4,7 @@
 import { h, debounce, reconcile, setChildren, setText } from "../dom.js";
 import { api, asList } from "../api.js";
 import {
-  ALERT_CATEGORIES, ALERT_STATUSES, SEVERITIES, categoryLabel, formatArea, formatPercent, severityLabel, statusLabel, verdictLabel,
+  ALERT_CATEGORIES, ALERT_STATUSES, SEVERITIES, alertGroupLabel, categoryLabel, formatArea, formatPercent, persistenceLabel, severityLabel, statusLabel, verdictLabel,
 } from "../format.js";
 import { alertPlace, alertTime, departmentName, on } from "../state.js";
 import { emptyState, errorState, imageBox, relTime, replayBadge, severityTag, skeletonRows, statusTag } from "../ui.js";
@@ -87,7 +87,8 @@ export async function mountAlerts(root, params, routeQuery) {
     },
     h("td.cell-thumb", imageBox(alert.thumbnail, { alt: "", ratio: "4 / 3", className: "table-thumb", fallback: null })),
     h("td", severityTag(alert.severity)),
-    h("td", h("a.table-primary", { href }, categoryLabel(alert.category) || alert.title || "Change detected")),
+    h("td", h("a.table-primary", { href }, alertGroupLabel(alert)),
+      persistenceLabel(alert) ? h("span.cell-sub", persistenceLabel(alert)) : null),
     h("td", h("span.cell-stack", alertPlace(alert), replayBadge(alert))),
     h("td", verdictLabel(alert.verdict)),
     h("td", departmentName(alert)),

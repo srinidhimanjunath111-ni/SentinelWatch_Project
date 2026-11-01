@@ -296,6 +296,7 @@ textarea.input { height: auto; padding: 0.5rem; resize: vertical; line-height: 1
 .kpi-label { color: var(--text-3); font-size: 0.846rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .kpi-value { font-size: 1.385rem; font-weight: 600; line-height: 1.25; white-space: nowrap; letter-spacing: -0.01em; }
 .kpi-critical .kpi-value { color: #ffb3ae; }
+.kpi-split { color: var(--text-3); font-size: 0.769rem; white-space: nowrap; font-variant-numeric: tabular-nums; }
 
 .ops-map-wrap { position: relative; min-height: 0; min-width: 0; background: #0b0e11; }
 .ops-map { position: absolute; inset: 0; background: #0b0e11; }
@@ -363,6 +364,7 @@ a.log-text:hover { color: var(--text); }
 .leaflet-control-scale-line { background: rgba(15, 19, 23, 0.72); border: 1px solid var(--text-3); border-top: 0; color: var(--text); font-size: 11px; text-shadow: none; }
 .map-tooltip { background: var(--surface); border: 1px solid var(--line-strong); color: var(--text); box-shadow: none; border-radius: 3px; padding: 2px 6px; font-size: 0.923rem; }
 .map-tooltip.leaflet-tooltip-top::before { border-top-color: var(--line-strong); }
+.site-map-label { max-width: 180px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 11px; }
 .leaflet-draw-tooltip { background: rgba(15, 19, 23, 0.92); border: 1px solid var(--line-strong); color: var(--text); font-family: var(--font); font-size: 0.846rem; border-radius: 3px; }
 .leaflet-draw-tooltip::before { display: none; }
 .leaflet-draw-tooltip-subtext { color: var(--text-2); }
@@ -404,12 +406,15 @@ a.log-text:hover { color: var(--text); }
 .incident-lower-side { min-width: 0; position: sticky; top: 1rem; }
 .incident-map { height: 22rem; background: #0b0e11; }
 
-.cmp-wrap { display: flex; justify-content: center; background: #0a0d10; border: 1px solid var(--line); border-radius: var(--radius); min-height: 14rem; }
 .cmp {
   --pos: 50%;
   position: relative;
   aspect-ratio: var(--ar);
-  width: min(100%, calc((100vh - var(--topbar) - 10.5rem) * var(--ar)));
+  width: min(100%, calc((100dvh - var(--topbar) - 16rem) * var(--ar)));
+  flex: none;
+  align-self: center;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
   overflow: hidden;
   background: #0a0d10;
   touch-action: none;

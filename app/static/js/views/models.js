@@ -1,13 +1,14 @@
 // Models and data: what the system runs on, how it scored, and where it falls short.
 
-import { h } from "../dom.js";
+import { h, morph, reconcile } from "../dom.js";
 import { api, asList } from "../api.js";
 import { icon } from "../icons.js";
 import {
-  formatCount, formatDate, formatDateTime, formatDuration, formatMetric, formatParameters, isNum, landcoverLabel, relativeAge, humanise,
+  cleanText, formatCount, formatDate, formatDateTime, formatDuration, formatMetric, formatParameters, isNum, landcoverLabel, relativeAge, humanise,
 } from "../format.js";
 import { metricBar } from "../charts.js";
 import { emptyState, errorState, imageBox, kv, skeletonRows } from "../ui.js";
+import { on, store } from "../state.js";
 
 const STAGES = [
   { key: "scene", title: "Sentinel-2 scene", detail: "New L2A scene from catalogue" },
@@ -157,16 +158,20 @@ function runtimeState(model, system) {
   const loaded = system && system.models_loaded ? system.models_loaded : {};
   const runtime = String(model.runtime_status || loaded[`${model.key}_runtime`] || "").toUpperCase();
   const status = String(model.status || "").toUpperCase();
+  const reason = cleanText(model.unavailable_reason);
   if (runtime === "LOAD_FAILED" || status === "LOAD_FAILED") {
-    return { key: "failed", tag: "Failed to load", detail: "Failed to load. Scenes are being processed with spectral rules until it is fixed." };
+    return { key: "failed", tag: "Failed to load", detail: reason || "The model failed to load." };
   }
   if (runtime === "NO_CHECKPOINT" || status === "CHECKPOINT_MISSING") {
-    return { key: "failed", tag: "Not installed", detail: "The checkpoint is not on this machine, so scenes are processed with spectral rules." };
+    return { key: "failed", tag: "Not installed", detail: reason || "The checkpoint is not on this machine." };
   }
   if (runtime === "LOADED") {
     return { key: "loaded", tag: "Loaded", detail: model.device ? `Loaded on ${model.device}` : "Loaded" };
   }
-  return { key: "pending", tag: "Ready", detail: "Loads when the next scene is analysed" };
+  if (status === "READY" && runtime === "NOT_LOADED") {
+    return { key: "pending", tag: "Not loaded", detail: reason || "Checkpoint available; not loaded in this process yet." };
+  }
+  return { key: "pending", tag: humanise(runtime || status) || "Unknown", detail: reason || "Runtime state not available." };
 }
 
 function modelCard(model, system) {
@@ -179,20 +184,12 @@ function modelCard(model, system) {
     artifactFigure("Confusion matrix", artifacts.confusion_matrix),
     artifactFigure("Sample predictions", artifacts.samples),
   ].filter(Boolean);
-  const ready = String(model.status || "").toUpperCase() === "READY";
   const runtime = runtimeState(model, system);
-  if (!ready && !model.architecture) {
-    return h("article.panel.model-card",
-      h("header.panel-head",
-        h("h2.panel-title", MODEL_NAMES[model.key] || humanise(model.key)),
-        h("span.tag.tag-status", { dataset: { status: "unavailable" } }, "Not installed")),
-      h("p.panel-empty", "The checkpoint for this model is not on this machine, so scenes are processed without it."));
-  }
   return h("article.panel.model-card", { "aria-label": model.name },
     h("header.panel-head",
       h("h2.panel-title", model.name || MODEL_NAMES[model.key] || humanise(model.key)),
       model.version ? h("span.panel-sub.mono", model.version) : null,
-      h("span.tag.tag-status", { dataset: { status: runtime.key === "failed" ? "unavailable" : "ready" } }, runtime.tag)),
+      h("span.tag.tag-status", { dataset: { status: runtime.key === "loaded" ? "ready" : "unavailable" } }, runtime.tag)),
     h("div.model-body",
       h("div.model-metrics",
         metrics.split ? h("p.section-label", `${humanise(metrics.split)} set`) : null,
@@ -206,11 +203,12 @@ function modelCard(model, system) {
         kv("Architecture", model.architecture),
         kv("Parameters", formatParameters(model.parameters)),
         kv("Input bands", asList(model.input_bands).join(", ")),
-        kv("Decision threshold", isNum(model.threshold) ? Number(model.threshold).toFixed(2) : null),
+        kv("Decision threshold", isNum(model.threshold) ? String(model.threshold) : null),
         kv("Trained", formatDate(model.trained_at)),
         kv("Epochs", isNum(model.epochs) && Number(model.epochs) > 0 ? model.epochs : null),
         kv("Training time", isNum(model.training_seconds) && Number(model.training_seconds) > 0 ? formatDuration(model.training_seconds) : null),
         kv("Runtime", runtime.detail),
+        kv("Registry status", humanise(model.registry_status)),
         kv("Checkpoint hash", model.checkpoint_sha256 ? String(model.checkpoint_sha256).slice(0, 16) : null, { mono: true })),
       datasets.length ? h("div", h("h4.section-label", "Datasets"), datasetTable(datasets)) : null,
       perClassTable(metrics.per_class),
@@ -270,6 +268,7 @@ function dataSources(system, dataStatus) {
 
 export async function mountModels(root) {
   let disposed = false;
+  let runtimeSignature = JSON.stringify(store.overview?.models);
   const pipeline = h("section.panel", { "aria-label": "How it works" },
     h("header.panel-head", h("h2.panel-title", "How it works")),
     h("div.pipeline-wrap", pipelineDiagram()));
@@ -287,20 +286,30 @@ export async function mountModels(root) {
     if (models.status === "fulfilled") {
       const list = asList(models.value, "models");
       const systemValue = system.status === "fulfilled" ? system.value : null;
-      modelHost.replaceChildren(...(list.length
-        ? list.map((model) => modelCard(model, systemValue))
-        : [emptyState("No models registered", "Model details appear here once the registry is present.")]));
+      if (list.length) {
+        if (!modelHost._keyed) modelHost.replaceChildren();
+        reconcile(modelHost, list, { key: (model) => model.key, render: (model) => modelCard(model, systemValue) });
+      } else modelHost.replaceChildren(emptyState("No models registered", "Model details appear here once the registry is present."));
     } else {
       modelHost.replaceChildren(errorState(models.reason, load, "Could not load model details"));
     }
-    sourceHost.replaceChildren(dataSources(
+    const next = dataSources(
       system.status === "fulfilled" ? system.value : null,
       dataStatus.status === "fulfilled" ? dataStatus.value : null,
-    ));
+    );
+    if (sourceHost.firstElementChild?.classList.contains("panel")) morph(sourceHost.firstElementChild, next);
+    else sourceHost.replaceChildren(next);
   }
   load();
+  const off = on("overview", () => {
+    const next = JSON.stringify(store.overview?.models);
+    if (next === runtimeSignature) return;
+    runtimeSignature = next;
+    load();
+  });
 
   return () => {
     disposed = true;
+    off();
   };
 }

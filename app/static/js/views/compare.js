@@ -130,9 +130,6 @@ export function createCompare({ images, beforeDate, afterDate, bounds, overlayDe
   };
   for (const layer of [before, after]) {
     layer.img.addEventListener("load", () => {
-      if (layer === before && layer.img.naturalWidth && layer.img.naturalHeight) {
-        frame.style.setProperty("--ar", String(layer.img.naturalWidth / layer.img.naturalHeight));
-      }
       settled();
     }, { once: true });
     layer.img.addEventListener("error", () => failed(layer), { once: true });

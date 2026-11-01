@@ -179,7 +179,7 @@ export async function mountSite(root, params) {
       imageBox(scene.thumbnail, { alt: `Scene of ${formatDate(scene.date)}`, ratio: "1 / 1", className: "scene-thumb", fallback: status === "cloudy" ? "Cloud" : null }),
       h("span.scene-date", formatShortDate(scene.date)),
       h("span.scene-status", h("span.scene-dot", { dataset: { status } }), sceneStatusLabel(scene.status)),
-      scene.replay ? h("span.tag.tag-replay.scene-replay", { title: "Archive replay" }, icon("history", { size: 12 }), "Replay") : null,
+      replayBadge(scene),
       scene.aoi_clear_fraction !== undefined && scene.aoi_clear_fraction !== null
         ? h("span.scene-cloud", `${formatPercent(scene.aoi_clear_fraction)} clear`)
         : scene.cloud_cover !== undefined && scene.cloud_cover !== null
@@ -194,15 +194,12 @@ export async function mountSite(root, params) {
   }
 
   let timelineLoaded = false;
-  const replayCases = new Set(); // The timeline has no origin field, so it is taken from the cases.
   async function loadTimeline() {
     try {
       const scenes = asList(await api.timeline(areaId), "timeline", "scenes");
       if (disposed) return;
       timelineLoaded = true;
-      const sorted = scenes
-        .map((scene) => ({ ...scene, replay: replayCases.has(scene.case_id) }))
-        .sort((a, b) => String(a.date).localeCompare(String(b.date)));
+      const sorted = scenes.sort((a, b) => String(a.date).localeCompare(String(b.date)));
       setText(timelineCount, sorted.length ? `${sorted.length} ${sorted.length === 1 ? "scene" : "scenes"}` : "");
       const atEnd = timelineStrip.scrollWidth - timelineStrip.scrollLeft - timelineStrip.clientWidth < 12;
       const created = reconcile(timelineStrip, sorted, { key: (scene) => scene.product_id || scene.date, render: renderScene });
@@ -225,8 +222,6 @@ export async function mountSite(root, params) {
       const rows = asList(await api.cases({ area_id: areaId, limit: 200 }), "cases");
       if (disposed) return;
       findingsLoaded = true;
-      replayCases.clear();
-      rows.filter((row) => row.origin === "archive_replay").forEach((row) => replayCases.add(row.id));
       if (!rows.length) {
         findingsBody.replaceChildren(h("p.panel-empty", "No findings at this site yet."));
         findingsBody._keyed = null;
@@ -262,8 +257,9 @@ export async function mountSite(root, params) {
     const today = new Date();
     const end = new Date(today.getTime() - 86400000);
     const start = new Date(today.getTime() - 86400000 * 365);
-    const startInput = h("input.input", { id: "replay-start", type: "date", value: isoDate(start), max: isoDate(end), min: "2017-01-01", required: true });
-    const endInput = h("input.input", { id: "replay-end", type: "date", value: isoDate(end), max: isoDate(today), min: "2017-01-01", required: true });
+    const suggested = area.suggested_replay || {};
+    const startInput = h("input.input", { id: "replay-start", type: "date", value: suggested.start_date || isoDate(start), max: isoDate(end), min: "2017-01-01", required: true });
+    const endInput = h("input.input", { id: "replay-end", type: "date", value: suggested.end_date || isoDate(end), max: isoDate(today), min: "2017-01-01", required: true });
     const scenes = h("input.input", { id: "replay-max", type: "number", value: 6, min: 2, max: 30, required: true });
     const error = h("p.form-error", { role: "alert", hidden: true });
     const submit = h("button.btn", { type: "submit" }, icon("history"), "Start replay");
@@ -284,7 +280,8 @@ export async function mountSite(root, params) {
             max_scenes: Number(scenes.value) || 6,
           });
           asList(result && result.run_ids).forEach((id) => replayRunIds.add(id));
-          toast("Archive replay started.", "ok");
+          const dates = asList(result && result.dates);
+          toast(dates.length ? `Archive replay started for ${dates.length} dates. The first scene is the baseline.` : "Archive replay started.", "ok");
           pollRuns(asList(result && result.run_ids));
         } catch (failure) {
           error.hidden = false;
@@ -294,7 +291,8 @@ export async function mountSite(root, params) {
         }
       },
     },
-    h("p.form-note", "Runs the same analysis over past scenes. Results carry an Archive replay badge."),
+    h("p.form-note", "Runs the same analysis over past scenes. The first scene is a baseline only. Results carry an Archive replay badge. You can repeat any replay."),
+    suggested.note ? h("p.form-note", cleanText(suggested.note)) : null,
     h("div.form-row",
       h("label.field", { for: "replay-start" }, h("span.field-label", "From"), startInput),
       h("label.field", { for: "replay-end" }, h("span.field-label", "To"), endInput),

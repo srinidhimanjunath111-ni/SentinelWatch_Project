@@ -4,9 +4,9 @@ import { h, debounce, morph, reconcile } from "../dom.js";
 import { api, asList } from "../api.js";
 import { icon } from "../icons.js";
 import {
-  categoryLabel, channelLabel, dispatchLine, formatArea, formatDateTime, verdictLabel,
+  alertGroupLabel, channelLabel, dispatchLine, formatCount, formatDateTime, persistenceLabel, verdictLabel,
 } from "../format.js";
-import { alertPlace, alertTime, isOpenAlert, on } from "../state.js";
+import { alertPlace, alertTime, isOpenAlert, on, store } from "../state.js";
 import { emptyState, errorState, imageBox, relTime, replayBadge, severityTag, skeletonRows, statusTag } from "../ui.js";
 
 function rowsFromInbox(body) {
@@ -31,6 +31,16 @@ export async function mountDepartments(root, params) {
   const deptList = h("ul.dept-list", { "aria-label": "Departments" });
   const inboxHost = h("div.dept-inbox");
   const logHost = h("div");
+  const deliveryCounts = h("div.page-meta");
+
+  function renderDeliveryCounts() {
+    const counts = store.overview?.counts;
+    const next = h("div.page-meta",
+      h("span", `Emails sent: ${counts ? formatCount(counts.emails_sent) : "–"}`),
+      h("span", `Saved to outbox: ${counts ? formatCount(counts.outbox_saved) : "–"}`));
+    morph(deliveryCounts, next);
+  }
+  renderDeliveryCounts();
 
   root.replaceChildren(h("div.page.page-wide",
     h("header.page-head", h("div.page-head-main", h("h1.page-title", "Departments"))),
@@ -64,9 +74,9 @@ export async function mountDepartments(root, params) {
         imageBox(alert.thumbnail, { alt: "", ratio: "4 / 3", className: "inbox-thumb", fallback: null }),
         h("span.inbox-body",
           h("span.inbox-top", severityTag(alert.severity), statusTag(alert.status), replayBadge(alert), relTime(alertTime(alert), "inbox-age")),
-          h("span.inbox-title", `${categoryLabel(alert.category) || "Change"} at ${alertPlace(alert)}`),
+          h("span.inbox-title", `${alertGroupLabel(alert)} at ${alertPlace(alert)}`),
           h("span.inbox-meta",
-            [verdictLabel(alert.verdict), formatArea(alert.area_m2)].filter(Boolean).join(" · ")),
+            [verdictLabel(alert.verdict), persistenceLabel(alert)].filter(Boolean).join(" · ")),
           latest ? h("span.inbox-dispatch", icon("mail", { size: 12 }), dispatchLine(latest)) : null)));
   }
 
@@ -163,7 +173,7 @@ export async function mountDepartments(root, params) {
     if (disposed) return;
     if (!selectedId && departments.length) selectedId = departments[0].id;
     root.replaceChildren(h("div.page.page-wide",
-      h("header.page-head", h("div.page-head-main", h("h1.page-title", "Departments"))),
+      h("header.page-head", h("div.page-head-main", h("h1.page-title", "Departments"), deliveryCounts)),
       departments.length
         ? h("div.dept-grid",
           h("nav.panel.dept-nav", { "aria-label": "Departments" }, deptList),
@@ -183,7 +193,7 @@ export async function mountDepartments(root, params) {
     loadCounts();
     loadLog();
   }, 500);
-  const offs = [on("alerts", refresh), on("dispatch-event", refresh)];
+  const offs = [on("alerts", refresh), on("dispatch-event", refresh), on("overview", renderDeliveryCounts)];
 
   return () => {
     disposed = true;

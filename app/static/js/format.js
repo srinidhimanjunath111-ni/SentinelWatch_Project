@@ -82,6 +82,7 @@ const RUN_LABELS = {
   DISPATCHING: "Dispatching",
   COMPLETED: "Completed",
   COMPLETED_NO_SIGNIFICANT_CHANGE: "Completed, no significant change",
+  REPLAY_BASELINE: "Replay baseline recorded",
   NO_NEW_ACQUISITION: "No new scene",
   NO_SUITABLE_ACQUISITION: "No usable scene",
   SKIPPED_PAUSED: "Skipped, site paused",
@@ -90,12 +91,13 @@ const RUN_LABELS = {
   MODEL_UNAVAILABLE: "Model unavailable",
   UNSUITABLE_IMAGERY: "Imagery unsuitable",
   FAILED: "Failed",
+  CANCELLED: "Cancelled",
 };
 
 const FINAL_RUN_STATES = new Set([
   "COMPLETED", "COMPLETED_NO_SIGNIFICANT_CHANGE", "NO_NEW_ACQUISITION", "NO_SUITABLE_ACQUISITION",
   "SKIPPED_PAUSED", "BLOCKED_CREDENTIALS", "BLOCKED_DEPENDENCY", "UNSUITABLE_IMAGERY", "FAILED",
-  "MODEL_UNAVAILABLE", "CANCELLED",
+  "MODEL_UNAVAILABLE", "CANCELLED", "REPLAY_BASELINE",
 ]);
 
 const SITE_TYPE_LABELS = {
@@ -123,6 +125,8 @@ const SCENE_STATUS_LABELS = {
   alert: "Change found",
   clear: "Clear",
   catalogued: "Catalogued",
+  no_baseline: "Baseline only",
+  analysis_error: "Analysis failed",
 };
 
 /** Timeline statuses from the API (DISCOVERED, CLEAR, CLOUDED, ANALYSED, CHANGE) to display groups. */
@@ -132,7 +136,10 @@ export function sceneStatusKey(value) {
   if (raw === "ANALYSED" || raw === "ANALYZED") return "analysed";
   if (raw === "CLOUDED" || raw === "CLOUDY") return "cloudy";
   if (raw === "CLEAR") return "clear";
-  return "catalogued";
+  if (raw === "NO_BASELINE") return "no_baseline";
+  if (raw === "ANALYSIS_ERROR") return "analysis_error";
+  if (raw === "DISCOVERED" || raw === "CATALOGUED") return "catalogued";
+  return String(value || "").toLowerCase();
 }
 
 const DISPATCH_STATUS_LABELS = {
@@ -160,7 +167,7 @@ const SENSITIVITY_LABELS = { LOW: "Low", MEDIUM: "Medium", HIGH: "High" };
 export function humanise(value) {
   if (value === null || value === undefined || value === "") return "";
   const text = String(value).replace(/[_-]+/g, " ").trim().toLowerCase();
-  return text.charAt(0).toUpperCase() + text.slice(1);
+  return text.replace(/\b\w/g, (letter) => letter.toUpperCase());
 }
 
 function lookup(map, value) {
@@ -178,7 +185,7 @@ export const healthLabel = (v) => lookup(HEALTH_LABELS, v);
 export const runLabel = (v) => lookup(RUN_LABELS, v);
 export const siteTypeLabel = (v) => lookup(SITE_TYPE_LABELS, v);
 export const zoneTypeLabel = (v) => lookup(ZONE_TYPE_LABELS, v);
-export const sceneStatusLabel = (v) => SCENE_STATUS_LABELS[sceneStatusKey(v)];
+export const sceneStatusLabel = (v) => lookup(SCENE_STATUS_LABELS, sceneStatusKey(v));
 export const dispatchStatusLabel = (v) => lookup(DISPATCH_STATUS_LABELS, v);
 export const channelLabel = (v) => lookup(CHANNEL_LABELS, v);
 export const sensitivityLabel = (v) => lookup(SENSITIVITY_LABELS, v);
@@ -333,6 +340,16 @@ export function formatArea(m2) {
   const ha = value / 10_000;
   if (ha === 0) return "0 ha";
   return `${ha >= 10 ? ha.toFixed(1) : ha.toFixed(2)} ha`;
+}
+
+/** Alerts group all regions of a category and verdict; area_m2 is already their total. */
+export function alertGroupLabel(alert) {
+  const count = isNum(alert.region_count) ? Number(alert.region_count) : Array.isArray(alert.regions) ? alert.regions.length : 0;
+  return [categoryLabel(alert.category) || "Change", count > 0 ? `${formatCount(count)} ${count === 1 ? "region" : "regions"}` : null, formatArea(alert.area_m2)].filter(Boolean).join(" · ");
+}
+
+export function persistenceLabel(alert) {
+  return Number(alert.persistence_count) > 1 ? `Seen in ${formatCount(alert.persistence_count)} scenes` : "";
 }
 
 /** Accepts a 0-1 fraction or a 0-100 value. */

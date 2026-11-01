@@ -209,7 +209,7 @@ export function applyAlert(alert) {
   knownAlertIds.add(alert.id);
   const changed = setAlert(alert);
   if (changed) emit("alerts");
-  if (isNew && store.loadedOnce.alerts) queueFresh(store.alerts.get(alert.id));
+  if (isNew && alert.event_kind !== "updated" && store.loadedOnce.alerts) queueFresh(store.alerts.get(alert.id));
 }
 
 export function mergeAlerts(list) {
@@ -243,28 +243,8 @@ export function pushActivity(item) {
   emit("overview");
 }
 
-/**
- * Activity lines from the server may not state their origin. Tie each to the record it describes so
- * replay work is not read as live. Used only when the line has no origin of its own.
- */
-function inferOrigin(row) {
-  if (row.type === "alert") {
-    return [...store.alerts.values()].find((alert) => alert.title === row.text)?.origin;
-  }
-  if (row.type === "run") {
-    const run = store.areas.get(row.area_id)?.latest_run;
-    return run && run.message && row.text.endsWith(run.message) ? run.origin : undefined;
-  }
-  if (row.type === "dispatch") {
-    const at = Date.parse(row.at) || 0;
-    return [...store.alerts.values()].find((alert) => alert.area_id === row.area_id && Math.abs((Date.parse(alert.dispatched_at || "") || 0) - at) < 5000)?.origin;
-  }
-  return undefined;
-}
-
 /** Server activity lines are logs, some with raw channel and status codes. Show them as sentences. */
-function readableActivity(input) {
-  const row = input.origin ? input : { ...input, origin: inferOrigin(input) };
+function readableActivity(row) {
   const match = /^([A-Z_]+) to (.+): ([A-Z_]+)$/.exec(row.text || "");
   if (!match) return { ...row, text: cleanText(row.text) };
   return { ...row, text: `${channelLabel(match[1])} to ${match[2]}: ${dispatchStatusLabel(match[3])}` };
@@ -276,7 +256,7 @@ export function activityFeed(limit = 20) {
   const seen = new Set();
   const unique = [];
   for (const row of rows) {
-    const key = `${row.type}|${row.text}`;
+    const key = `${row.origin || ""}|${row.area_id || ""}|${row.type}|${row.text}`;
     if (!row.text || seen.has(key)) continue;
     seen.add(key);
     unique.push(row);
@@ -375,10 +355,11 @@ export function applyHeartbeat(event) {
 
 export function applyAlertEvent(event) {
   // "created" is a new alert. "updated" is a dispatch or a repeat detection merging into it.
-  const { event_kind: kind, ...alert } = event;
+  const kind = event.event_kind;
+  const alert = event;
   const isNew = !knownAlertIds.has(alert.id);
   applyAlert(alert);
-  if (isNew || kind === "created") {
+  if (kind !== "updated" && (isNew || kind === "created")) {
     pushActivity({ type: "alert", origin: alert.origin, text: `${verdictHeadline(alert.verdict, alert.category)} at ${alertPlace(alert)}`, area_id: alert.area_id });
   }
   if (alert.area_id) refreshAreaSoon(alert.area_id);
