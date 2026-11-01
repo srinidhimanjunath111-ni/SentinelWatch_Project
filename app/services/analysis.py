@@ -9,7 +9,7 @@ establishes legality or cause beyond doubt, and the reasons they produce say so.
 from __future__ import annotations
 
 from collections.abc import Callable
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from typing import Any
 
 import numpy as np
@@ -665,6 +665,15 @@ def _classify_cause(
             return "URBANISATION", reasons, strength
         return "CONSTRUCTION", reasons, strength
 
+    # Fields turning bare inside a registered construction footprint are earthworks, not a harvest.
+    if from_class == CROP and to_class == BARE:
+        for item in context.zones:
+            if item["zone"].get("zone_type") == "CONSTRUCTION" and float(np.mean(item["mask"][region])) >= AUTHORISED_OVERLAP:
+                reasons.append(
+                    f"Cropland became bare ground inside a registered construction footprint, "
+                    f"consistent with earthworks (NDBI {deltas['ndbi']:+.2f})."
+                )
+                return "CONSTRUCTION", reasons, 0.6
     if (from_class == CROP and to_class in (BARE, SHRUB_GRASS, CROP)) or (from_class == BARE and to_class == CROP):
         reasons.append(f"Cropland moved from {from_name} to {to_name}, the pattern of a harvest or sowing cycle.")
         return "CROP_CYCLE", reasons, 0.6
@@ -744,6 +753,12 @@ def assess_region(
         change_map.mask,
     )
     persists, fraction, coverage = seasonal.persists, seasonal.persist_fraction, seasonal.coverage
+    # No season puts up a building. Bare ground can resemble a harvested field in every index
+    # used here, so a match with last year cannot excuse land that is now classed as built.
+    newly_built = to_class == BUILT and from_class != BUILT
+    if persists is False and newly_built:
+        persists = None
+        seasonal = replace(seasonal, persists=None, status="inconclusive")
     if seasonal.status == "no_reference":
         reasons.append(
             "No clear same-season scene from last year was available, so seasonality could not be tested."

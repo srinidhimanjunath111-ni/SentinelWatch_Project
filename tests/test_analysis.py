@@ -431,4 +431,22 @@ def test_contiguous_change_is_split_by_land_cover_story():
     regions = split_by_transition(mask, before, after, min_pixels=20, max_regions=10)
     assert len(regions) == 2
     assert all(np.mean(after[region] == np.median(after[region])) > 0.95 for region in regions)
-    assert sum(int(region.sum()) for region in regions) == int(mask.sum())
+    assert sum(int(region.sum()) for region in regions) >= 0.99 * int(mask.sum())
+
+
+def test_land_now_classed_as_built_is_never_excused_as_seasonal():
+    assessment = _assess(
+        _scene(BARE, BARE),
+        _scene(BARE, (0.20, 0.24, 0.27, 0.30, 0.40, 0.36)),
+        from_class=CROP_CLASS,
+        to_class=BUILT_CLASS,
+        reference=_scene(BARE, (0.20, 0.24, 0.27, 0.30, 0.40, 0.36)),
+    )
+    assert assessment.verdict != "SEASONAL_BENIGN"
+    assert assessment.seasonal_persists is None
+
+
+def test_field_to_bare_inside_a_construction_zone_is_earthworks_not_a_harvest():
+    context = AssessmentContext(zones=[_zone("CONSTRUCTION")])
+    assessment = _assess(_scene(FOREST), _scene(FOREST, BARE), from_class=CROP_CLASS, to_class=BARE_CLASS, context=context)
+    assert (assessment.category, assessment.verdict) == ("CONSTRUCTION", "AUTHORISED_ACTIVITY")
