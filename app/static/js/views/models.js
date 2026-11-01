@@ -150,17 +150,21 @@ function artifactFigure(label, url) {
 const MODEL_NAMES = { change: "Change detector", landcover: "Land cover classifier" };
 
 /**
- * Registry status says a checkpoint is listed and on disk. It does not say the model loaded. A model
- * that failed to load means scenes run on spectral rules, and the card must not read Ready.
+ * `status` says whether the model can be used; `runtime_status` says what this process really has in
+ * memory. A model that failed to load means scenes run on spectral rules, so it must not read Ready.
  */
 function runtimeState(model, system) {
-  const fromModel = model.loaded ?? model.available;
-  const fromSystem = system && system.models_loaded ? system.models_loaded[`${model.key}_available`] : undefined;
-  const attempted = model.load_attempted ?? (system && system.models_loaded ? system.models_loaded[`${model.key}_load_attempted`] : undefined);
-  const loaded = fromModel ?? fromSystem;
-  if (loaded === true) return { key: "loaded", tag: "Loaded", detail: `Loaded${system && system.device ? ` on ${system.device}` : ""}` };
-  if (loaded === false && (attempted === true || model.load_error)) {
+  const loaded = system && system.models_loaded ? system.models_loaded : {};
+  const runtime = String(model.runtime_status || loaded[`${model.key}_runtime`] || "").toUpperCase();
+  const status = String(model.status || "").toUpperCase();
+  if (runtime === "LOAD_FAILED" || status === "LOAD_FAILED") {
     return { key: "failed", tag: "Failed to load", detail: "Failed to load. Scenes are being processed with spectral rules until it is fixed." };
+  }
+  if (runtime === "NO_CHECKPOINT" || status === "CHECKPOINT_MISSING") {
+    return { key: "failed", tag: "Not installed", detail: "The checkpoint is not on this machine, so scenes are processed with spectral rules." };
+  }
+  if (runtime === "LOADED") {
+    return { key: "loaded", tag: "Loaded", detail: model.device ? `Loaded on ${model.device}` : "Loaded" };
   }
   return { key: "pending", tag: "Ready", detail: "Loads when the next scene is analysed" };
 }
@@ -188,7 +192,7 @@ function modelCard(model, system) {
     h("header.panel-head",
       h("h2.panel-title", model.name || MODEL_NAMES[model.key] || humanise(model.key)),
       model.version ? h("span.panel-sub.mono", model.version) : null,
-      h("span.tag.tag-status", { dataset: { status: ready && runtime.key !== "failed" ? "ready" : "unavailable" } }, ready ? runtime.tag : "Unavailable")),
+      h("span.tag.tag-status", { dataset: { status: runtime.key === "failed" ? "unavailable" : "ready" } }, runtime.tag)),
     h("div.model-body",
       h("div.model-metrics",
         metrics.split ? h("p.section-label", `${humanise(metrics.split)} set`) : null,
@@ -206,8 +210,7 @@ function modelCard(model, system) {
         kv("Trained", formatDate(model.trained_at)),
         kv("Epochs", isNum(model.epochs) && Number(model.epochs) > 0 ? model.epochs : null),
         kv("Training time", isNum(model.training_seconds) && Number(model.training_seconds) > 0 ? formatDuration(model.training_seconds) : null),
-        ready ? kv("Runtime", runtime.detail) : null,
-        kv("Trained on device", model.device),
+        kv("Runtime", runtime.detail),
         kv("Checkpoint hash", model.checkpoint_sha256 ? String(model.checkpoint_sha256).slice(0, 16) : null, { mono: true })),
       datasets.length ? h("div", h("h4.section-label", "Datasets"), datasetTable(datasets)) : null,
       perClassTable(metrics.per_class),
