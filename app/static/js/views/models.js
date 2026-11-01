@@ -4,7 +4,7 @@ import { h } from "../dom.js";
 import { api, asList } from "../api.js";
 import { icon } from "../icons.js";
 import {
-  formatCount, formatDate, formatDateTime, formatDuration, formatMetric, formatParameters, formatPercent, isNum, landcoverLabel, relativeAge, humanise,
+  formatCount, formatDate, formatDateTime, formatDuration, formatMetric, formatParameters, isNum, landcoverLabel, relativeAge, humanise,
 } from "../format.js";
 import { metricBar } from "../charts.js";
 import { emptyState, errorState, imageBox, kv, skeletonRows } from "../ui.js";

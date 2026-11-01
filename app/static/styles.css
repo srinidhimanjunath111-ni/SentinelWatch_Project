@@ -49,7 +49,8 @@
 *, *::before, *::after { box-sizing: border-box; }
 [hidden] { display: none !important; }
 
-html { font-size: 13px; height: 100%; }
+html { font-size: 13px; height: 100%; color-scheme: dark; scrollbar-color: var(--line-strong) transparent; }
+.rail-scroll, .timeline, .regions-scroll, .draw-form, .zones-side { scrollbar-width: thin; }
 @media (min-width: 1700px) { html { font-size: 14.5px; } }
 
 body {
@@ -538,6 +539,7 @@ a.log-text:hover { color: var(--text); }
 .scene-link:hover { text-decoration: none; }
 a.scene-link:hover .imgbox { box-shadow: 0 0 0 1px var(--text-2); }
 .scene[data-status="alert"] .imgbox { box-shadow: 0 0 0 1px var(--critical); }
+.scene-replay { align-self: flex-start; margin: 0.125rem 0; }
 .scene-date { font-weight: 500; margin-top: 0.125rem; }
 .scene-status { display: inline-flex; align-items: center; gap: 0.3rem; color: var(--text-2); font-size: 0.846rem; white-space: nowrap; }
 .scene-cloud { color: var(--text-3); font-size: 0.846rem; white-space: nowrap; }

@@ -185,6 +185,7 @@ export async function mountSite(root, params) {
       imageBox(scene.thumbnail, { alt: `Scene of ${formatDate(scene.date)}`, ratio: "1 / 1", className: "scene-thumb", fallback: status === "cloudy" ? "Cloud" : null }),
       h("span.scene-date", formatShortDate(scene.date)),
       h("span.scene-status", h("span.scene-dot", { dataset: { status } }), sceneStatusLabel(scene.status)),
+      scene.replay ? h("span.tag.tag-replay.scene-replay", { title: "Archive replay" }, icon("history", { size: 12 }), "Replay") : null,
       scene.aoi_clear_fraction !== undefined && scene.aoi_clear_fraction !== null
         ? h("span.scene-cloud", `${formatPercent(scene.aoi_clear_fraction)} clear`)
         : scene.cloud_cover !== undefined && scene.cloud_cover !== null
@@ -199,12 +200,15 @@ export async function mountSite(root, params) {
   }
 
   let timelineLoaded = false;
+  const replayCases = new Set(); // The timeline has no origin field, so it is taken from the cases.
   async function loadTimeline() {
     try {
       const scenes = asList(await api.timeline(areaId), "timeline", "scenes");
       if (disposed) return;
       timelineLoaded = true;
-      const sorted = [...scenes].sort((a, b) => String(a.date).localeCompare(String(b.date)));
+      const sorted = scenes
+        .map((scene) => ({ ...scene, replay: replayCases.has(scene.case_id) }))
+        .sort((a, b) => String(a.date).localeCompare(String(b.date)));
       setText(timelineCount, sorted.length ? `${sorted.length} ${sorted.length === 1 ? "scene" : "scenes"}` : "");
       const atEnd = timelineStrip.scrollWidth - timelineStrip.scrollLeft - timelineStrip.clientWidth < 12;
       const created = reconcile(timelineStrip, sorted, { key: (scene) => scene.product_id || scene.date, render: renderScene });
@@ -227,6 +231,8 @@ export async function mountSite(root, params) {
       const rows = asList(await api.cases({ area_id: areaId, limit: 50 }), "cases");
       if (disposed) return;
       findingsLoaded = true;
+      replayCases.clear();
+      rows.filter((row) => row.origin === "archive_replay").forEach((row) => replayCases.add(row.id));
       if (!rows.length) {
         findingsBody.replaceChildren(h("p.panel-empty", "No findings at this site yet."));
         findingsBody._keyed = null;
@@ -392,14 +398,12 @@ export async function mountSite(root, params) {
   findingsBody.append(skeletonRows(3));
   timelineState.append(skeletonRows(1));
   mountMap();
-  loadTimeline();
-  loadFindings();
+  loadFindings().then(loadTimeline);
 
   // ------------------------------------------------------ live updates
 
   const refreshData = debounce(() => {
-    loadTimeline();
-    loadFindings();
+    loadFindings().then(loadTimeline);
   }, 600);
 
   cleanups.push(on("run-event", (event) => {
