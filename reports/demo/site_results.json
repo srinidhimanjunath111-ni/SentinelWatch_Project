@@ -1,0 +1,899 @@
+{
+  "generated_at": "2026-11-01T23:29:39.057694Z",
+  "model_version": "v2",
+  "model_threshold": 0.47827455747013037,
+  "measurement_notes": [
+    "Archive pair used max_scenes=2 at each seeded suggested date range.",
+    "Hectares on each site headline refer only to its stated primary category/verdict, not all changed land.",
+    "Alert counts are grouped alerts; other findings can remain evidence below the alert threshold.",
+    "Prior real scene windows/context responses were reused; v2 analysis, findings and dispatches were recomputed in a clean DB.",
+    "Outage failures from the initial pass are excluded from site verdict results.",
+    "Reserved .example mailboxes only; in-app dispatches are real application records; OUTBOX_SAVED is not email delivery.",
+    "Visual review is qualitative and does not validate causes, permits, or pixel accuracy."
+  ],
+  "sites": [
+    {
+      "site_key": "jewar-airport",
+      "name": "Noida International Airport, Jewar",
+      "pair": {
+        "before": "2021-03-20",
+        "after": "2025-03-24"
+      },
+      "category": "CONSTRUCTION",
+      "verdict": "AUTHORISED_ACTIVITY",
+      "hectares": 633.41,
+      "alert_count": 5,
+      "mask_looks_right": true,
+      "mask_review": "Runway and developed airport ground are coherent; adjacent settlement/field changes remain separate. Small live earthworks notice needs field verification.",
+      "archive_replay": {
+        "pair": {
+          "before": "2021-03-20",
+          "after": "2025-03-24"
+        },
+        "statuses": [
+          "REPLAY_BASELINE",
+          "COMPLETED"
+        ],
+        "elapsed_seconds": 14.478,
+        "alert_count": 5,
+        "alerts": [
+          {
+            "category": "CONSTRUCTION",
+            "verdict": "SUSPECTED_UNAUTHORISED",
+            "hectares": 7.7,
+            "confidence": 0.7688
+          },
+          {
+            "category": "URBANISATION",
+            "verdict": "SUSPECTED_UNAUTHORISED",
+            "hectares": 3.01,
+            "confidence": 0.757
+          },
+          {
+            "category": "CONSTRUCTION",
+            "verdict": "NEEDS_REVIEW",
+            "hectares": 24.05,
+            "confidence": 0.7872
+          },
+          {
+            "category": "OTHER_CHANGE",
+            "verdict": "NEEDS_REVIEW",
+            "hectares": 4.6,
+            "confidence": 0.7143
+          },
+          {
+            "category": "CONSTRUCTION",
+            "verdict": "AUTHORISED_ACTIVITY",
+            "hectares": 633.41,
+            "confidence": 0.8867
+          }
+        ],
+        "findings_summary": [
+          {
+            "category": "CONSTRUCTION",
+            "verdict": "AUTHORISED_ACTIVITY",
+            "hectares": 633.41
+          },
+          {
+            "category": "CONSTRUCTION",
+            "verdict": "NEEDS_REVIEW",
+            "hectares": 24.05
+          },
+          {
+            "category": "CONSTRUCTION",
+            "verdict": "SUSPECTED_UNAUTHORISED",
+            "hectares": 7.7
+          },
+          {
+            "category": "CROP_CYCLE",
+            "verdict": "SEASONAL_BENIGN",
+            "hectares": 98.3
+          },
+          {
+            "category": "OTHER_CHANGE",
+            "verdict": "NEEDS_REVIEW",
+            "hectares": 7.75
+          },
+          {
+            "category": "URBANISATION",
+            "verdict": "SUSPECTED_UNAUTHORISED",
+            "hectares": 3.01
+          },
+          {
+            "category": "WATER_CHANGE",
+            "verdict": "NEEDS_REVIEW",
+            "hectares": 32.54
+          }
+        ],
+        "analysis_methods": [
+          "siamese-unet+spectral | landcover-unet"
+        ],
+        "model_versions": [
+          "v2"
+        ],
+        "case_ids": [
+          "78bb17c0-26d3-4a1e-b2cb-8673f62e2b55"
+        ]
+      },
+      "live_check": {
+        "pair": {
+          "before": "2026-10-05",
+          "after": "2026-10-25"
+        },
+        "statuses": [
+          "COMPLETED"
+        ],
+        "elapsed_seconds": 10.082,
+        "alert_count": 1,
+        "alerts": [
+          {
+            "category": "CONSTRUCTION",
+            "verdict": "AUTHORISED_ACTIVITY",
+            "hectares": 1.25,
+            "confidence": 0.8007
+          }
+        ],
+        "findings_summary": [
+          {
+            "category": "CONSTRUCTION",
+            "verdict": "AUTHORISED_ACTIVITY",
+            "hectares": 1.25
+          },
+          {
+            "category": "CONSTRUCTION",
+            "verdict": "NEEDS_REVIEW",
+            "hectares": 1.6
+          },
+          {
+            "category": "CROP_CYCLE",
+            "verdict": "SEASONAL_BENIGN",
+            "hectares": 329.02
+          },
+          {
+            "category": "OTHER_CHANGE",
+            "verdict": "NEEDS_REVIEW",
+            "hectares": 2.95
+          },
+          {
+            "category": "URBANISATION",
+            "verdict": "NEEDS_REVIEW",
+            "hectares": 0.6
+          }
+        ],
+        "analysis_methods": [
+          "siamese-unet+spectral | landcover-unet"
+        ],
+        "model_versions": [
+          "v2"
+        ],
+        "case_ids": [
+          "60792933-ada6-4897-94ff-ac3c26fae8c4"
+        ]
+      }
+    },
+    {
+      "site_key": "navi-mumbai-airport",
+      "name": "Navi Mumbai International Airport, Ulwe",
+      "pair": {
+        "before": "2021-01-27",
+        "after": "2025-01-06"
+      },
+      "category": "CONSTRUCTION",
+      "verdict": "AUTHORISED_ACTIVITY",
+      "hectares": 133.51,
+      "alert_count": 2,
+      "mask_looks_right": true,
+      "mask_review": "Terminal/apron and changed prepared ground are coherent; creek and surrounding vegetation remain separate. No large speckle. October live: zero alerts.",
+      "archive_replay": {
+        "pair": {
+          "before": "2021-01-27",
+          "after": "2025-01-06"
+        },
+        "statuses": [
+          "REPLAY_BASELINE",
+          "COMPLETED"
+        ],
+        "elapsed_seconds": 16.608,
+        "alert_count": 2,
+        "alerts": [
+          {
+            "category": "OTHER_CHANGE",
+            "verdict": "NEEDS_REVIEW",
+            "hectares": 54.17,
+            "confidence": 0.6799
+          },
+          {
+            "category": "CONSTRUCTION",
+            "verdict": "AUTHORISED_ACTIVITY",
+            "hectares": 133.51,
+            "confidence": 0.7611
+          }
+        ],
+        "findings_summary": [
+          {
+            "category": "CONSTRUCTION",
+            "verdict": "AUTHORISED_ACTIVITY",
+            "hectares": 133.51
+          },
+          {
+            "category": "CROP_CYCLE",
+            "verdict": "SEASONAL_BENIGN",
+            "hectares": 15.82
+          },
+          {
+            "category": "OTHER_CHANGE",
+            "verdict": "NEEDS_REVIEW",
+            "hectares": 124.49
+          },
+          {
+            "category": "SEASONAL_VEGETATION",
+            "verdict": "SEASONAL_BENIGN",
+            "hectares": 1.2
+          },
+          {
+            "category": "WATER_CHANGE",
+            "verdict": "NEEDS_REVIEW",
+            "hectares": 5.14
+          }
+        ],
+        "analysis_methods": [
+          "siamese-unet+spectral | landcover-unet"
+        ],
+        "model_versions": [
+          "v2"
+        ],
+        "case_ids": [
+          "d3c0fcff-3fb4-4138-8c7e-d191c15755ea"
+        ]
+      },
+      "live_check": {
+        "pair": {
+          "before": "2026-10-03",
+          "after": "2026-10-28"
+        },
+        "statuses": [
+          "COMPLETED"
+        ],
+        "elapsed_seconds": 12.089,
+        "alert_count": 0,
+        "alerts": [],
+        "findings_summary": [
+          {
+            "category": "CROP_CYCLE",
+            "verdict": "SEASONAL_BENIGN",
+            "hectares": 92.6
+          },
+          {
+            "category": "OTHER_CHANGE",
+            "verdict": "NEEDS_REVIEW",
+            "hectares": 54.63
+          },
+          {
+            "category": "WATER_CHANGE",
+            "verdict": "SEASONAL_BENIGN",
+            "hectares": 78.05
+          }
+        ],
+        "analysis_methods": [
+          "siamese-unet+spectral | landcover-unet"
+        ],
+        "model_versions": [
+          "v2"
+        ],
+        "case_ids": [
+          "c87ed7ce-26d0-48a8-aae9-8d4d9dd34397"
+        ]
+      }
+    },
+    {
+      "site_key": "pekb-hasdeo-arand",
+      "name": "Parsa East Kete Basan mine, Hasdeo Arand",
+      "pair": {
+        "before": "2021-02-24",
+        "after": "2025-03-25"
+      },
+      "category": "MINING",
+      "verdict": "AUTHORISED_ACTIVITY",
+      "hectares": 53.75,
+      "alert_count": 4,
+      "mask_looks_right": true,
+      "mask_review": "Mask follows mine benches and southern advance; uncertain worked surfaces remain review evidence. Small northern deforestation label needs verification. October live: zero alerts.",
+      "archive_replay": {
+        "pair": {
+          "before": "2021-02-24",
+          "after": "2025-03-25"
+        },
+        "statuses": [
+          "REPLAY_BASELINE",
+          "COMPLETED"
+        ],
+        "elapsed_seconds": 14.691,
+        "alert_count": 4,
+        "alerts": [
+          {
+            "category": "DEFORESTATION",
+            "verdict": "SUSPECTED_UNAUTHORISED",
+            "hectares": 6.1,
+            "confidence": 0.6362
+          },
+          {
+            "category": "OTHER_CHANGE",
+            "verdict": "NEEDS_REVIEW",
+            "hectares": 141.46,
+            "confidence": 0.7722
+          },
+          {
+            "category": "MINING",
+            "verdict": "AUTHORISED_ACTIVITY",
+            "hectares": 53.75,
+            "confidence": 0.934
+          },
+          {
+            "category": "DEFORESTATION",
+            "verdict": "AUTHORISED_ACTIVITY",
+            "hectares": 4.07,
+            "confidence": 0.9281
+          }
+        ],
+        "findings_summary": [
+          {
+            "category": "CROP_CYCLE",
+            "verdict": "SEASONAL_BENIGN",
+            "hectares": 8.22
+          },
+          {
+            "category": "DEFORESTATION",
+            "verdict": "AUTHORISED_ACTIVITY",
+            "hectares": 4.07
+          },
+          {
+            "category": "DEFORESTATION",
+            "verdict": "NEEDS_REVIEW",
+            "hectares": 2.65
+          },
+          {
+            "category": "DEFORESTATION",
+            "verdict": "SUSPECTED_UNAUTHORISED",
+            "hectares": 6.1
+          },
+          {
+            "category": "MINING",
+            "verdict": "AUTHORISED_ACTIVITY",
+            "hectares": 53.75
+          },
+          {
+            "category": "OTHER_CHANGE",
+            "verdict": "NEEDS_REVIEW",
+            "hectares": 619.61
+          },
+          {
+            "category": "SEASONAL_VEGETATION",
+            "verdict": "SEASONAL_BENIGN",
+            "hectares": 4.39
+          },
+          {
+            "category": "WATER_CHANGE",
+            "verdict": "NEEDS_REVIEW",
+            "hectares": 11.0
+          },
+          {
+            "category": "WATER_CHANGE",
+            "verdict": "SEASONAL_BENIGN",
+            "hectares": 4.68
+          }
+        ],
+        "analysis_methods": [
+          "siamese-unet+spectral | landcover-unet"
+        ],
+        "model_versions": [
+          "v2"
+        ],
+        "case_ids": [
+          "6f4cb8af-848d-438d-b430-69bc1f383e3c"
+        ]
+      },
+      "live_check": {
+        "pair": {
+          "before": "2026-10-03",
+          "after": "2026-10-26"
+        },
+        "statuses": [
+          "COMPLETED"
+        ],
+        "elapsed_seconds": 8.08,
+        "alert_count": 0,
+        "alerts": [],
+        "findings_summary": [
+          {
+            "category": "CROP_CYCLE",
+            "verdict": "SEASONAL_BENIGN",
+            "hectares": 5.74
+          },
+          {
+            "category": "OTHER_CHANGE",
+            "verdict": "NEEDS_REVIEW",
+            "hectares": 76.62
+          },
+          {
+            "category": "SEASONAL_VEGETATION",
+            "verdict": "SEASONAL_BENIGN",
+            "hectares": 8.29
+          },
+          {
+            "category": "WATER_CHANGE",
+            "verdict": "NEEDS_REVIEW",
+            "hectares": 0.65
+          }
+        ],
+        "analysis_methods": [
+          "siamese-unet+spectral | landcover-unet"
+        ],
+        "model_versions": [
+          "v2"
+        ],
+        "case_ids": [
+          "f7cd3286-da64-4908-b370-01feccfe1949"
+        ]
+      }
+    },
+    {
+      "site_key": "rawa-nangal-quarries",
+      "name": "Rawa\u2013Nangal border ridge quarries",
+      "pair": {
+        "before": "2021-03-05",
+        "after": "2025-03-24"
+      },
+      "category": "MINING",
+      "verdict": "SUSPECTED_UNAUTHORISED",
+      "hectares": 3.78,
+      "alert_count": 2,
+      "mask_looks_right": true,
+      "mask_review": "Sparse quarry-margin outlines follow exposed ridge cuts; crop regions remain separate. No large speckle. Tile selected by pipeline is 43RFL, differing from dossier 43RGL; attribution remains uncertain.",
+      "archive_replay": {
+        "pair": {
+          "before": "2021-03-05",
+          "after": "2025-03-24"
+        },
+        "statuses": [
+          "REPLAY_BASELINE",
+          "COMPLETED"
+        ],
+        "elapsed_seconds": 14.627,
+        "alert_count": 2,
+        "alerts": [
+          {
+            "category": "MINING",
+            "verdict": "SUSPECTED_UNAUTHORISED",
+            "hectares": 3.78,
+            "confidence": 0.6384
+          },
+          {
+            "category": "OTHER_CHANGE",
+            "verdict": "NEEDS_REVIEW",
+            "hectares": 3.81,
+            "confidence": 0.69
+          }
+        ],
+        "findings_summary": [
+          {
+            "category": "CONSTRUCTION",
+            "verdict": "SUSPECTED_UNAUTHORISED",
+            "hectares": 5.77
+          },
+          {
+            "category": "CROP_CYCLE",
+            "verdict": "SEASONAL_BENIGN",
+            "hectares": 794.2
+          },
+          {
+            "category": "MINING",
+            "verdict": "SUSPECTED_UNAUTHORISED",
+            "hectares": 3.78
+          },
+          {
+            "category": "OTHER_CHANGE",
+            "verdict": "NEEDS_REVIEW",
+            "hectares": 24.07
+          },
+          {
+            "category": "URBANISATION",
+            "verdict": "SUSPECTED_UNAUTHORISED",
+            "hectares": 0.87
+          }
+        ],
+        "analysis_methods": [
+          "siamese-unet+spectral | landcover-unet"
+        ],
+        "model_versions": [
+          "v2"
+        ],
+        "case_ids": [
+          "ac5baeb8-b7d3-4966-a422-8f763e4cbda6"
+        ]
+      },
+      "live_check": {
+        "pair": {
+          "before": "2026-10-05",
+          "after": "2026-10-25"
+        },
+        "statuses": [
+          "COMPLETED"
+        ],
+        "elapsed_seconds": 8.072,
+        "alert_count": 0,
+        "alerts": [],
+        "findings_summary": [
+          {
+            "category": "CROP_CYCLE",
+            "verdict": "SEASONAL_BENIGN",
+            "hectares": 7.22
+          }
+        ],
+        "analysis_methods": [
+          "siamese-unet+spectral | landcover-unet"
+        ],
+        "model_versions": [
+          "v2"
+        ],
+        "case_ids": [
+          "ea60256e-b098-43f0-8c84-563fe3807fa9"
+        ]
+      }
+    },
+    {
+      "site_key": "wayanad-debris-flow",
+      "name": "Mundakkai\u2013Chooralmala debris-flow corridor, Wayanad",
+      "pair": {
+        "before": "2024-02-05",
+        "after": "2024-12-16"
+      },
+      "category": "LANDSLIDE",
+      "verdict": "NATURAL_EVENT",
+      "hectares": 76.71,
+      "alert_count": 2,
+      "mask_looks_right": true,
+      "mask_review": "Archive mask follows the widened debris corridor. Small additional archive/live patches are not independently verified as new landslides.",
+      "archive_replay": {
+        "pair": {
+          "before": "2024-02-05",
+          "after": "2024-12-16"
+        },
+        "statuses": [
+          "REPLAY_BASELINE",
+          "COMPLETED"
+        ],
+        "elapsed_seconds": 13.798,
+        "alert_count": 2,
+        "alerts": [
+          {
+            "category": "LANDSLIDE",
+            "verdict": "NATURAL_EVENT",
+            "hectares": 76.71,
+            "confidence": 0.9315
+          },
+          {
+            "category": "OTHER_CHANGE",
+            "verdict": "NEEDS_REVIEW",
+            "hectares": 3.03,
+            "confidence": 0.8066
+          }
+        ],
+        "findings_summary": [
+          {
+            "category": "LANDSLIDE",
+            "verdict": "NATURAL_EVENT",
+            "hectares": 76.71
+          },
+          {
+            "category": "OTHER_CHANGE",
+            "verdict": "NEEDS_REVIEW",
+            "hectares": 3.6
+          },
+          {
+            "category": "SEASONAL_VEGETATION",
+            "verdict": "SEASONAL_BENIGN",
+            "hectares": 2.02
+          }
+        ],
+        "analysis_methods": [
+          "siamese-unet+spectral | landcover-unet"
+        ],
+        "model_versions": [
+          "v2"
+        ],
+        "case_ids": [
+          "4f26f148-c1f2-422d-901f-419e71688f1b"
+        ]
+      },
+      "live_check": {
+        "pair": {
+          "before": "2026-07-14",
+          "after": "2026-10-27"
+        },
+        "statuses": [
+          "COMPLETED"
+        ],
+        "elapsed_seconds": 8.154,
+        "alert_count": 2,
+        "alerts": [
+          {
+            "category": "LANDSLIDE",
+            "verdict": "NATURAL_EVENT",
+            "hectares": 3.79,
+            "confidence": 0.9285
+          },
+          {
+            "category": "OTHER_CHANGE",
+            "verdict": "NEEDS_REVIEW",
+            "hectares": 3.74,
+            "confidence": 0.7496
+          }
+        ],
+        "findings_summary": [
+          {
+            "category": "CROP_CYCLE",
+            "verdict": "SEASONAL_BENIGN",
+            "hectares": 3.52
+          },
+          {
+            "category": "LANDSLIDE",
+            "verdict": "NATURAL_EVENT",
+            "hectares": 3.79
+          },
+          {
+            "category": "OTHER_CHANGE",
+            "verdict": "NEEDS_REVIEW",
+            "hectares": 4.95
+          },
+          {
+            "category": "SEASONAL_VEGETATION",
+            "verdict": "SEASONAL_BENIGN",
+            "hectares": 6.94
+          }
+        ],
+        "analysis_methods": [
+          "siamese-unet+spectral | landcover-unet"
+        ],
+        "model_versions": [
+          "v2"
+        ],
+        "case_ids": [
+          "695c2f67-2e23-45a3-8380-c6527d572a87"
+        ]
+      }
+    },
+    {
+      "site_key": "kanha-seasonal",
+      "name": "Kanha forest\u2013meadow seasonal reference",
+      "pair": {
+        "before": "2023-11-09",
+        "after": "2024-04-17"
+      },
+      "category": "SEASONAL_VEGETATION",
+      "verdict": "SEASONAL_BENIGN",
+      "hectares": 1912.63,
+      "alert_count": 0,
+      "mask_looks_right": true,
+      "mask_review": "Broad diffuse canopy browning follows vegetation; seasonal/weak-cause evidence is retained with zero alerts. No new bounded clearing verified.",
+      "archive_replay": {
+        "pair": {
+          "before": "2023-11-09",
+          "after": "2024-04-17"
+        },
+        "statuses": [
+          "REPLAY_BASELINE",
+          "COMPLETED"
+        ],
+        "elapsed_seconds": 13.567,
+        "alert_count": 0,
+        "alerts": [],
+        "findings_summary": [
+          {
+            "category": "CROP_CYCLE",
+            "verdict": "SEASONAL_BENIGN",
+            "hectares": 9.37
+          },
+          {
+            "category": "OTHER_CHANGE",
+            "verdict": "NEEDS_REVIEW",
+            "hectares": 11.2
+          },
+          {
+            "category": "SEASONAL_VEGETATION",
+            "verdict": "SEASONAL_BENIGN",
+            "hectares": 1912.63
+          },
+          {
+            "category": "WATER_CHANGE",
+            "verdict": "NEEDS_REVIEW",
+            "hectares": 1.7
+          }
+        ],
+        "analysis_methods": [
+          "siamese-unet+spectral | landcover-unet"
+        ],
+        "model_versions": [
+          "v2"
+        ],
+        "case_ids": [
+          "5c00605a-f782-4e41-a38b-af2730df9762"
+        ]
+      },
+      "live_check": {
+        "pair": {
+          "before": "2026-06-28",
+          "after": "2026-10-19"
+        },
+        "statuses": [
+          "COMPLETED"
+        ],
+        "elapsed_seconds": 10.09,
+        "alert_count": 0,
+        "alerts": [],
+        "findings_summary": [
+          {
+            "category": "CROP_CYCLE",
+            "verdict": "SEASONAL_BENIGN",
+            "hectares": 24.76
+          },
+          {
+            "category": "OTHER_CHANGE",
+            "verdict": "NEEDS_REVIEW",
+            "hectares": 0.69
+          },
+          {
+            "category": "SEASONAL_VEGETATION",
+            "verdict": "SEASONAL_BENIGN",
+            "hectares": 398.32
+          }
+        ],
+        "analysis_methods": [
+          "siamese-unet+spectral | landcover-unet"
+        ],
+        "model_versions": [
+          "v2"
+        ],
+        "case_ids": [
+          "5cac2aa9-db12-4b44-8af2-955a977a5978"
+        ]
+      }
+    },
+    {
+      "site_key": "delhi-yamuna-floodplain",
+      "name": "Yamuna floodplain near Shastri Park, Delhi",
+      "pair": {
+        "before": "2023-06-08",
+        "after": "2023-07-13"
+      },
+      "category": "FLOOD",
+      "verdict": "NATURAL_EVENT",
+      "hectares": 152.93,
+      "alert_count": 2,
+      "mask_looks_right": true,
+      "mask_review": "Flood mask follows visible inundation in usable pixels; cloud/shadow regions excluded. Small other changes are uncertain; flood area is cloud-limited.",
+      "archive_replay": {
+        "pair": {
+          "before": "2023-06-08",
+          "after": "2023-07-13"
+        },
+        "statuses": [
+          "REPLAY_BASELINE",
+          "COMPLETED"
+        ],
+        "elapsed_seconds": 11.985,
+        "alert_count": 2,
+        "alerts": [
+          {
+            "category": "FLOOD",
+            "verdict": "NATURAL_EVENT",
+            "hectares": 152.93,
+            "confidence": 0.8655
+          },
+          {
+            "category": "OTHER_CHANGE",
+            "verdict": "NEEDS_REVIEW",
+            "hectares": 23.55,
+            "confidence": 0.676
+          }
+        ],
+        "findings_summary": [
+          {
+            "category": "CONSTRUCTION",
+            "verdict": "SUSPECTED_UNAUTHORISED",
+            "hectares": 2.34
+          },
+          {
+            "category": "CROP_CYCLE",
+            "verdict": "SEASONAL_BENIGN",
+            "hectares": 3.03
+          },
+          {
+            "category": "FLOOD",
+            "verdict": "NATURAL_EVENT",
+            "hectares": 152.93
+          },
+          {
+            "category": "OTHER_CHANGE",
+            "verdict": "NEEDS_REVIEW",
+            "hectares": 86.21
+          },
+          {
+            "category": "WATER_CHANGE",
+            "verdict": "NEEDS_REVIEW",
+            "hectares": 3.24
+          }
+        ],
+        "analysis_methods": [
+          "siamese-unet+spectral | landcover-unet"
+        ],
+        "model_versions": [
+          "v2"
+        ],
+        "case_ids": [
+          "6f3aa39c-e1b6-4bd3-aab3-00d6ae31a64c"
+        ]
+      },
+      "live_check": {
+        "pair": {
+          "before": "2026-10-05",
+          "after": "2026-10-25"
+        },
+        "statuses": [
+          "COMPLETED"
+        ],
+        "elapsed_seconds": 6.051,
+        "alert_count": 0,
+        "alerts": [],
+        "findings_summary": [
+          {
+            "category": "OTHER_CHANGE",
+            "verdict": "NEEDS_REVIEW",
+            "hectares": 4.29
+          }
+        ],
+        "analysis_methods": [
+          "siamese-unet+spectral | landcover-unet"
+        ],
+        "model_versions": [
+          "v2"
+        ],
+        "case_ids": [
+          "d5806421-1946-4fc1-9d2e-60159c68f4ff"
+        ]
+      }
+    }
+  ],
+  "dispatch_example": {
+    "id": "4e965e46-f385-4fb4-9102-259653472501",
+    "alert_id": "0878e07e-852d-455e-99be-aa8c9f69d0a2",
+    "channel": "IN_APP",
+    "status": "RECORDED",
+    "destination": "Delhi Pollution Control Board",
+    "created_at": "2026-11-01T23:27:42Z"
+  },
+  "snapshot": {
+    "created_at": "2026-11-01T23:28:48Z",
+    "counts": {
+      "monitoring_areas": 7,
+      "cases": 14,
+      "findings": 439,
+      "alerts": 20,
+      "analyses": 14
+    },
+    "images": 565,
+    "images_bytes": 23792907,
+    "database_bytes": 7151616,
+    "total_bytes": 30944760
+  },
+  "timing": {
+    "initial_uncached_jewar_live_seconds": 34.211,
+    "final_uncached_live": {
+      "site_key": "navi-mumbai-airport",
+      "seconds": 62.5,
+      "status": "COMPLETED",
+      "analysis_methods": [
+        "siamese-unet+spectral | landcover-unet"
+      ]
+    }
+  }
+}
