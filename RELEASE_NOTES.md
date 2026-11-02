@@ -1,6 +1,6 @@
 # SentinelWatch v3.0.0 release notes
 
-The final documentation package on `feature/complete-sentinelwatch` reconciles installed models, measured site results and the current UI. The final report PDF includes genuine screenshots and rendered diagrams. Runtime proofs below come from `reports/demo/site_results.json`; the documentation walk used read-only navigation on the existing demo.
+The final documentation package on `main` reconciles installed models, measured site results and the current UI. The final report PDF includes genuine screenshots and rendered diagrams. Runtime proofs below come from `reports/demo/site_results.json`; the documentation walk used read-only navigation on the existing demo.
 
 ## Measured results
 

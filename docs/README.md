@@ -1,6 +1,6 @@
 # SentinelWatch documentation index
 
-Start with the [root README](../README.md) for setup and the workflow. These documents describe v3 source inspected on 2 November 2026; they distinguish inspected implementation from runtime evidence. Model/site measurements are reconciled with the registry and reports. Prior runtime proofs are attributed; the documentation UI walk was read-only.
+Start with the [setup guide](../SETUP_GUIDE.md) to run the app and the [root README](../README.md) for the workflow. These documents describe v3 source inspected on 2 November 2026; they distinguish inspected implementation from runtime evidence. Model/site measurements are reconciled with the registry and reports. Prior runtime proofs are attributed; the documentation UI walk was read-only.
 
 | Document | Use |
 |---|---|

@@ -38,12 +38,12 @@ Rawa is the weakest evidence, with a tile mismatch against the research dossier 
 
 ## Quick start
 
+**New here? Follow the step-by-step [setup guide](SETUP_GUIDE.md).** It covers installing Python, downloading the project, preparing a demo and fixing common problems.
+
 Everything is in this repository: both trained models (`models/checkpoints/`), the saved demo data (`demo_snapshot/`) and the final report PDF (`output/pdf/`). **Training is not needed**, and neither are API keys or a `.env` file. Install Python 3.12 first. The first start also needs internet access.
 
-The finished work is on the `feature/complete-sentinelwatch` branch, so clone that branch rather than `main`:
-
 ```sh
-git clone --branch feature/complete-sentinelwatch https://github.com/srinidhimanjunath111-ni/SentinelWatch_Project.git
+git clone https://github.com/srinidhimanjunath111-ni/SentinelWatch_Project.git
 cd SentinelWatch_Project
 ```
 
@@ -52,7 +52,7 @@ Then start it from the repository root and open `http://127.0.0.1:8000`.
 macOS/Linux:
 
 ```sh
-bash scripts/run.sh
+PYTHON=python3.12 bash scripts/run.sh
 ```
 
 Windows PowerShell:
@@ -61,7 +61,7 @@ Windows PowerShell:
 powershell -ExecutionPolicy Bypass -File scripts\run.ps1
 ```
 
-The launch script creates a virtual environment and installs the requirements plus PyTorch. On the tested Mac this took under 2 minutes, and later starts skip it. It then restores 7 sites, 14 cases and 20 alerts. No GPU is needed: the models use CUDA or Apple GPUs when present and otherwise the CPU. Imagery is cached as it is used, so the first replay of each site downloads it. Run the replays you plan to show once beforehand, as the [demo guide](docs/SentinelWatch_Demo_Guide.md) explains.
+The launch script creates a virtual environment and installs the requirements plus PyTorch. This usually takes a few minutes, and later starts skip it. It then restores 7 sites, 14 cases and 20 alerts. No GPU is needed: the models use CUDA or Apple GPUs when present and otherwise the CPU. Imagery is cached as it is used, so the first replay of each site downloads it. Run the replays you plan to show once beforehand, as the [demo guide](docs/SentinelWatch_Demo_Guide.md) explains.
 
 The Windows script has not been run on Windows; its control flow was only exercised with stub interpreters under PowerShell 7 on macOS.
 

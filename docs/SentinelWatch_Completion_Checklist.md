@@ -1,6 +1,6 @@
 # SentinelWatch completion checklist
 
-Final documentation package: v3.0.0 on `feature/complete-sentinelwatch`. The existing exam server at port 8000 was used only for read-only GETs, navigation and screenshots. It was not stopped, restarted, checked, replayed or mutated by this task. No application, test, model or training files were edited.
+Final documentation package: v3.0.0 on `main`. See the [setup guide](../SETUP_GUIDE.md) to run it on another computer. The existing exam server at port 8000 was used only for read-only GETs, navigation and screenshots. It was not stopped, restarted, checked, replayed or mutated by this task. No application, test, model or training files were edited.
 
 ## Status against the brief
 
