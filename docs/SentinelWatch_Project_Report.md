@@ -133,25 +133,27 @@ For bands on the common grid:
 
 Safe division handles near-zero denominators. For each index the baseline estimates a small common shift only from pixels whose absolute index difference is within half that index threshold. At least one quarter of the candidate pixels must satisfy that stability criterion; otherwise no shift is subtracted. The median of those stable values is removed, then the absolute residual is scaled against a sensitivity-adjusted threshold. The strongest index is smoothed. This avoids defining the offset from changed pixels, but stability selection and thresholds still require independent validation.
 
-With a model, probabilities are rescaled so the checkpoint's validation-selected threshold maps to 0.5. The code blends model evidence with spectral evidence (weights 0.6 and 0.4), thresholds the fused map at 0.5, and also requires spectral support of at least 0.30 on the fused branch. Strong spectral evidence of at least 0.75 can independently retain a pixel so an out-of-domain model cannot veto it. These are design constants, not evaluation scores. Without the model, the spectral map is thresholded alone. Binary opening/closing suppress small noise, eight-connected components form regions, and minimum-area/count limits remove small or excess components. Area equals retained pixels times the projected grid pixel area.
+With a model, probabilities are rescaled so the checkpoint's validation-selected threshold maps to 0.5. The code blends model evidence with spectral evidence (weights 0.6 and 0.4), thresholds the fused map at 0.5, and also requires spectral support of at least 0.30 on the fused branch. Strong spectral evidence of at least 0.75 can independently retain a pixel so an out-of-domain model cannot veto it. These are design constants, not evaluation scores. When strong spectral change spans most of the scene, independent spectral strength can raise a specific human/hazard cause's evidence score; unexplained broad index shifts do not gain that alert weight. Without the model, the spectral map is thresholded alone. Binary opening/closing suppress small noise, eight-connected components form regions, and minimum-area/count limits remove small or excess components. Area equals retained pixels times the projected grid pixel area.
 
 ### 6.4 Cause rules: order matters
 
 This table follows `_classify_cause` in `app/services/analysis.py`. Deltas mean later minus earlier. Constants are inspected rule settings, not measured results. The first matching rule wins.
 
-| Priority | Evidence condition | Proposed category / qualification |
+| Order | Evidence condition | Proposed category / qualification |
 |---|---|---|
-| 1 | New water/wetland or NDWI rise ≥0.25 with positive later NDWI | `FLOOD` if heavy rainfall or a flood feed corroborates; otherwise `WATER_CHANGE` |
-| 2 | Water/wetland recedes to another known class | `WATER_CHANGE` |
-| 3 | Transition into mine class; or BSI rise ≥0.15 with mine class / mapped quarry overlap ≥0.30 / an operator-registered mining-site type | `MINING`; footprint evidence does not prove extraction or permission |
-| 4 | NBR drop ≥0.27, earlier class not crop, and (dark later visible/NIR surface outside a registered mining site, or a nearby fire report) | `BURN_SCAR`; ignition cause remains unknown |
-| 5 | Vegetation becomes bare/shrub, extreme rainfall or landslide report, available mean slope ≥18° and scar bounding-box fill ≤0.55 | `LANDSLIDE`; missing terrain/context prevents this rule from firing |
-| 6 | Tree becomes bare or shrub/grass | `DEFORESTATION`, subject to the subsequent seasonal test |
-| 7 | Becomes built, or NDBI rise ≥0.15 with vegetation loss under the coded class restrictions | `URBANISATION` if at least 0.25 of the surrounding ring was built; otherwise `CONSTRUCTION` |
-| 8 | Crop→bare/shrub/crop or bare→crop | `CROP_CYCLE`; crop-to-built is handled earlier |
-| 9 | Exposed soil without supporting cause, vegetation gain with falling BSI, same-cover variation, or unmatched transition | `OTHER_CHANGE` and review rather than a specific accusation |
+| First | New water/wetland supported by rising NDWI, or a strong NDWI rise with positive later NDWI | Flood with timely rain/report corroboration outside mining sites; otherwise water change |
+| Next | Water/wetland recedes to another known class | Water change |
+| Next | Surface stripped, extreme rain or landslide report, and terrain/shape support outside a mining site | Landslide; disaster-site context permits gentler debris runout and relaxed shape constraints |
+| Next | Exposed-soil rise plus a mine-class transition, mapped quarry, existing mine surface or bare ground at a registered mining site | Mining-related footprint; neither extraction nor permission is proved |
+| Next | Darkened surface and strong NBR decline at an infrastructure site without a fire report | Construction consistent with paving |
+| Next | Strong NBR decline outside cropland, with dark spectral support outside mining/infrastructure or a nearby fire report | Burn scar; ignition cause remains unknown |
+| Next | Tree becomes bare or shrub/grass | Deforestation, subject to seasonal interpretation |
+| Next | Becomes built, or built-up index rises with vegetation loss under the coded class/site restrictions | Urbanisation near an existing settlement; otherwise construction |
+| Next | Crop becomes bare inside a matching registered construction footprint | Construction consistent with earthworks, before the crop-cycle rule |
+| Next | Crop becomes bare/shrub/crop, or bare becomes crop | Crop cycle |
+| Last | Exposed soil without a specific cause, regrowth, same-cover variation or unmatched transition | Other change; weak causes remain below alert eligibility |
 
-The burn darkness limits are visible reflectance ≤0.13 and NIR ≤0.26. Rainfall defaults are 100 mm (heavy) and 200 mm (extreme) over a 14-day window, including the wettest such window in the comparison interval when available. They are heuristic settings, not universal scientific/legal definitions. Every finding retains its index changes and readable reasons.
+These are ordered heuristics, not scientific or legal definitions. Mine-class labels are treated as bare ground at typed non-mining sites unless mapped quarry context supports them. Water, landslide and fire context also have temporal restrictions. Exact configurable/default thresholds are implementation settings in `app/services/analysis.py`, not measured performance. Missing terrain/context can prevent a hazard rule from firing. Every finding retains its index changes and readable reasons.
 
 For a short pair, a proposed human activity is downgraded to weak `OTHER_CHANGE` evidence if vegetation declines while the later spectrum still looks vegetated. Land-cover labels alone do not establish clearing or construction. This reduces false alarms from drying/senescence, but **can miss real change on short pairs**. It needs independent sensitivity evaluation.
 
@@ -159,9 +161,9 @@ For a short pair, a proposed human activity is downgraded to weak `OTHER_CHANGE`
 
 Let `R` be a region, `Vref` the valid reference pixels, and `I` an index. The test first requires `|R ∩ Vref|/|R| ≥ 0.5`; otherwise `seasonal_persists = null`. It considers index drivers whose regional before-to-after mean change magnitude is at least `0.6 × index_threshold`.
 
-For a driver, estimate the later-minus-reference common shift from stable shared pixels **outside all detected change**, using the same small-shift criterion. A reference-covered region pixel supports persistence when its residual has the original change direction and magnitude at least `max(0.5 × |regional_change|, 0.5 × index_threshold)`. Take the largest supporting fraction across drivers. Persistence is true when that fraction is at least 0.5.
+For a driver, estimate the later-minus-reference common shift from stable shared pixels **outside all detected change**, using the same small-shift criterion. A reference-covered region pixel supports persistence when its residual has the original change direction and magnitude at least `max(0.75 × |regional_change|, 0.5 × index_threshold)`. Take the largest supporting fraction across drivers. Persistence is true when that fraction is at least 0.5.
 
-Benign seasonality requires positive similarity, not merely a failure of persistence: at least 0.60 of the covered region must be within `0.60 × index_threshold` of the reference on **every driving index**. If no driver qualifies, use the maximum absolute normalised distance over all indices: distance ≥1.0 supports persistence; distance ≤0.60 supports similarity. Persistence takes precedence. A region meeting neither criterion is **inconclusive**, with `seasonal_persists = null`, even when reference coverage is sufficient.
+Benign seasonality requires positive similarity, not merely a failure of persistence: at least 0.60 of the covered region must be near the reference on **every driving index**. The per-index allowance is `max(0.60 × index_threshold, min(0.60 × |regional_change|, index_threshold))`. If no driver qualifies, use the maximum absolute normalised distance over all indices: distance ≥1.0 supports persistence; distance ≤0.60 supports similarity. Persistence takes precedence. A region meeting neither criterion is **inconclusive**, with `seasonal_persists = null`, even when reference coverage is sufficient.
 
 If persistence is false, the verdict becomes `SEASONAL_BENIGN`. The category becomes `CROP_CYCLE` when crop is involved or `SEASONAL_VEGETATION` for other non-water recurrence. Recurring water remains `WATER_CHANGE`. If a crop-cycle rule already matched, it is benign even if the reference is missing or persistence is true. Therefore this is a screening heuristic; an unusual harmful crop event could be suppressed. Missing reference does not prove either seasonality or permanence. Year-to-year hydrology and agricultural timing remain confounders.
 
@@ -223,15 +225,15 @@ The [ER source](diagrams/er-diagram.mmd) uses the actual model class and column 
 
 ## 8. Training and reproducibility
 
-The runnable recipe and paths are in the [root README](../README.md#reproduce-training-and-evaluation). It was checked against argument definitions, not executed here.
+The full runnable recipe and paths are in [training/README.md](../training/README.md), linked from the root README. It was checked against argument definitions, not executed here.
 
-**OSCD.** The fetcher uses a pinned archive mirror, path-checks ZIP members and caches six-band arrays without pickle. Official test cities stay test; predefined validation cities are removed from official training. OSCD urban annotations are not labels for all physical or natural change. Respect the change-map noncommercial academic licence.
+**OSCD.** The fetcher uses a pinned archive mirror, path-checks ZIP members and caches six-band arrays without pickle. Official test cities stay test. v1 removed predefined validation cities from training; v2 calibrated across folds of the official training cities before training its final model on that pool. OSCD urban annotations are not labels for all physical or natural change. Respect the change-map noncommercial academic licence.
 
 **India forest.** The builder combines real L2A dry-season pairs with Hansen annual loss labels. Target-year loss is positive; stable forest with no recorded loss is negative; non-forest, other loss years and invalid pixels are ignored. Splits use geographic blocks with chip margins. Annual, coarser labels introduce spatial/temporal uncertainty. Scores on this data do not measure false alarms outside labelled forest.
 
 **India land cover.** The builder samples L2A windows across states, mining belts and rare-class areas. It maps WorldCover classes into the application vocabulary and burns historical mining polygons into the mine class. Snow/moss and invalid observations are ignored. Held-out WorldCover tiles, pinned before training, have margins to reduce overlap. The label date and mining mosaic date are imperfectly aligned; a mining footprint can contain water, plant and tailings.
 
-**Optimisation.** Change training uses weighted binary cross-entropy plus soft Dice with ignored pixels, random crops and paired geometric augmentation. Land cover uses class-weighted cross-entropy and rare-class sampling. Training uses validation to select checkpoints; the change threshold is tuned on validation. Test evaluation uses that frozen threshold and records checkpoint SHA-256, dataset/split, device and confusion counts. Repeating a report for the same checkpoint requires an explicit override. This guard does not make test-based model selection statistically valid: declare the selection protocol before consulting test results.
+**Optimisation.** Change training uses weighted binary cross-entropy plus soft Dice with ignored pixels, random crops and paired geometric augmentation. Land cover uses class-weighted cross-entropy and rare-class sampling. v1 and land cover used validation checkpoint selection. The final v2 run used a fixed training length and EMA weights; its threshold and temperature came from out-of-fold validation calibration. Test evaluation uses that frozen threshold and records checkpoint SHA-256, dataset/split, device and confusion counts. Repeating a report for the same checkpoint requires an explicit override. This guard does not make test-based model selection statistically valid: declare the selection protocol before consulting test results.
 
 **Registry.** `training.build_registry` assembles model facts from installed checkpoints and measured reports. It matches test reports to checkpoint hashes and marks unevaluated checkpoints accordingly. Training/evaluation figures include learning curves, confusion matrices and sample panels. Cached singletons require restart after replacement. Random seeds improve repeatability but do not guarantee bitwise equality across devices; resumed sampling intentionally uses a different random stream.
 

@@ -1,71 +1,64 @@
 # SentinelWatch completion checklist
 
-Documentation handoff: 2 November 2026, branch `feature/complete-sentinelwatch`. Source is changing in a shared checkout. **Source inspected** means the implementation was read; it is not a runtime pass. **Pending integrator check** means this worker did not verify the final behaviour. Training/model measurements remain pending even when a training commit exists.
+Final documentation package: v3.0.0 on `feature/complete-sentinelwatch`. The existing exam server at port 8000 was used only for read-only GETs, navigation and screenshots. It was not stopped, restarted, checked, replayed or mutated by this task. No application, test, model or training files were edited.
 
-## Deliverables
+## Status against the brief
 
-| Brief item | Evidence and status |
+| Deliverable | Final status and evidence |
 |---|---|
-| Root README | Rewritten: product/boundaries, placeholder screenshot links, macOS/Linux and Windows commands, configuration, architecture, sources, actual training CLI, deployment and limits |
-| Final-year report | `SentinelWatch_Project_Report.md` delivered with abstract, problem/objectives, verified literature, modules/design, rule order, seasonal/authorisation tests, database, testing, result tokens, limitations and references |
-| Replace stale Markdown review | `SentinelWatch_Project_Review.md` deleted after the replacement report was written |
-| Ten Mermaid diagrams | All ten rewritten; parser passed 10, failed 0 after fixing a sequence-label syntax error |
-| ER accuracy | Checked against AST of `app/models.py`: 16 entities, 122 selected actual columns and all 23 declared foreign-key columns represented; optional one-to-one ORM intent explicitly distinguished from missing unique constraints |
-| Use-case/API alignment | Source read: routers, schemas, lifecycle table and frontend hash routes; browser/API interaction remains **pending integrator check** |
-| Ten-minute demo | Timed script with actual visible controls, conditional completed-replay path and Wi-Fi/provider/scene/projector/restart/model/email/PDF recovery |
-| Viva bank | 70 numbered questions with concise answers, including metrics, domain shift, false positives, permission limits, scaling/security/ethics and real versus illustrative evidence |
-| Speaking guide | Thirty-second, one-minute, two-minute and longer report scripts; no invented software timings |
-| Release notes/changelog | v3.0.0 notes tied to actual git-log commits, with source/runtime distinction; re-read the log before final integration |
-| Documentation index | Updated navigation; old review links removed from owned documents |
-| Screenshots | Six explicitly declared placeholder links and rewritten capture instructions; capture/visual review **pending integrator check** |
-| Obsolete PDF | New PDF requirement documented. User explicitly directed this worker to leave obsolete `output/pdf/SentinelWatch_Final_Year_Project_Review_Package.pdf` deletion to integrator. No PDF built here |
-| Scope | Only README, release/changelog and owned docs modified; engineering contract and `docs/sites/` untouched by this worker |
+| Replace measurement/result tokens | Complete. Registry-matched measurements and recorded site/proof results replace the tokens; missing detailed records are described honestly. The requested grep returns no matches |
+| Correct stale model claims | Complete. Installed change v2, v1 comparison, land-cover results, non-blind selection, out-of-fold uncertainty, city range and WorldCover agreement limits are stated |
+| Published comparison | Exact FC-Siam-diff OSCD F1 57.92% confirmed in the fetched arXiv paper, Table 1. Its thirteen-band experiment differs from this six-band implementation; SentinelWatch is below published |
+| Site results | Complete. All measured archive pairs, primary category/verdict hectares and grouped-alert counts are in the report. Other Jewar/PEKB/Navi alerts, Rawa uncertainty, Delhi clouds, PEKB contested clearance and Wayanad delayed imagery are explicit. Expected verdicts are hypotheses |
+| Current behaviour | Complete. Hard fetch deadline, per-band retry, cached/offline boundaries, grouped alerts, live/replay separation, illustrative-zone review buffer, map-layer policy and short-pair missed-change trade-off are documented |
+| Soak and observed failures | Complete. The recorded soak's limits are explicit: ticks occurred, no checks came due; earlier clean-install checks proved scheduler initiation. The observed overnight imagery-read failure interval is not given an unproven cause |
+| Demo guide | Walked on the actual UI. Wayanad opens the presentation; saved incident/site links, correct visible labels, group-versus-region area, Jewar authorised selection, recovery and deliberate clean-snapshot reset are documented. No reset or action button was exercised |
+| Viva and speaking guide | Reconciled with final measurements and evidence limits; no unfinished-training claim remains |
+| Screenshots | All required screens captured at 1920 × 1080, individually below 400 KB, and visually inspected. See [nine captures and provenance](screenshots/README.md) |
+| Diagrams | All Mermaid sources rendered successfully using the CLI under `/tmp`. Rendered PNGs are in `docs/diagrams/rendered/`; the report embeds them. Long/dense diagrams retain high-resolution originals for zooming |
+| Final project PDF | [Final report](../output/pdf/SentinelWatch_Final_Year_Project_Report.pdf): 38 pages, about 5.9 MB. Title page, contents, page numbers, wrapped/repeated table headers, nine screenshots and ten rendered diagrams. Every page rendered to an image and viewed; no table overflow or text outside margins found |
+| Obsolete PDF | Removed with `git rm output/pdf/SentinelWatch_Final_Year_Project_Review_Package.pdf` after building and inspecting its replacement |
+| Release notes/index/changelog | Updated for v3.0.0 and final deliverables. SciPy/ReportLab dependency and launcher-presence claims rechecked against code; old missing-dependency claims removed |
+| Scope and data | Documentation, screenshots, rendered diagrams and report PDF only. No mutation server was needed on port 8500. Prior runtime proofs were read, not repeated on the demo instance |
 
-## Product readiness against the brief
+## Verification actually performed in this task
 
-| Requirement | Inspected evidence | Status |
-|---|---|---|
-| Mark Indian sites, schedule/pause/check | Area API/schema, add-site/site views and scheduler | Source inspected; end-to-end **pending integrator check** |
-| Public real Sentinel-2 imagery | Earth Search/Planetary Computer provider chain, cropped reads/cache and optional CDSE | Source inspected; live pair and failover **pending integrator check** |
-| Six-band alignment, cloud/quality handling | Provider/grid/SCL and monitoring code | Source inspected; representative raster inspection **pending integrator check** |
-| Learned change/land-cover inference | Model interfaces, networks, preprocessing, training/evaluation/registry scripts | Source inspected; final installed checkpoint/evaluation **pending integrator check** |
-| Proposed cause/rule table | Ordered rules and vocabulary read; report describes constants as settings | Source inspected; category-level field validation **pending integrator check** |
-| Seasonality | Prior-year reference selection and persistence/similarity logic read | Source inspected; final source/evidence branch checks **pending integrator check** |
-| Authorisation | Acquisition-date/type/overlap zone filtering; illustrative qualification read | Source inspected; authentic register coverage and case outcomes **pending integrator check** |
-| Department routing/deduplication | Category routes, alert eligibility/overlap merge and dispatch code | Source inspected; final flow **pending integrator check** |
-| Delivery truthfulness | In-app RECORDED, unsent OUTBOX_SAVED, SMTP SENT/FAILED outcomes | Source inspected; external delivery **pending integrator check**; no department login performed |
-| Case evidence and PDF | Persistence/payload/evidence/reporting paths and UI error handling read | Source inspected; actual PDF generation/opening **pending integrator check** |
-| Live/replay separation | Origin/replay IDs, replay API, badges and duplicate-isolation code | Source inspected; final browser rehearsal **pending integrator check** |
-| Startup/recovery | Scheduler orphan recovery, per-AOI queue and storage code read | Source inspected; actual restart exercise **pending integrator check** |
-| Launch scripts | `scripts/run.sh` and `scripts/run.ps1` absent at initial inspection | Presence/final contents and Windows/macOS/Linux execution **pending integrator check**; README includes manual fallback |
-| Fresh-install dependency completeness | Analysis imports `scipy.ndimage`; inspected operational requirements omit SciPy. README manual setup explicitly includes it | Backend requirement/script/image correction and clean setup **pending integrator check** |
-| Deployment | Dockerfile/Compose/config/auth inspected | Docker not installed; **unverified here, pending integrator check** |
-| Security/ethics | Optional write login, public reads/evidence, bounded inputs, suspected wording and illustrative records | Source inspected; deployment threat review **pending integrator check** |
-| Current tests/lint | Existing test source read; no suite/lint invocation by this worker | Final suite results **pending integrator check**; do not reuse historical pass counts |
+Tools were installed only in `/tmp/sentinelwatch-docs-venv` and `/tmp/sentinelwatch-mermaid`. The temporary scripts below are documentation tooling, not application tests. No current full application test-suite or lint pass is asserted.
 
-## Checks actually run by this worker
-
-| Exact command / method | Result and limits |
+| Exact command or method | Result and limits |
 |---|---|
-| `git log --oneline -30` | Read repeatedly as work landed; release/changelog describe real commits, not invented history |
-| `git diff --check -- README.md docs/SentinelWatch_Project_Report.md docs/SentinelWatch_Project_Review.md` | Passed before the first documentation commit; 0 whitespace errors |
-| `npm view mermaid@10.9.5 dist.unpackedSize dependencies --json` | Inspected parser footprint before installing; no browser/Chromium download |
-| `npm install --prefix /tmp/sentinelwatch-doc-parser --ignore-scripts --no-audit --no-fund mermaid@10.9.5 jsdom@24` | Completed under `/tmp`; no project dependency/config changes or system-wide installation |
-| `NODE_OPTIONS=--max-old-space-size=192 node /tmp/sentinelwatch-doc-parser/check.mjs` | Final parse: **10 passed, 0 failed**. Initial harness setup needed a Node navigator-property fix; initial diagram pass found 1 sequence-label error, corrected and rechecked. Syntax parsing is not rendered-layout review |
-| `python3 /tmp/sentinelwatch-doc-parser/check_docs.py` | Static relative-link, stale-copy, token inventory, question count and ER-column/FK check; final output recorded below. Initial run detected the stale checklist assertion, which was removed |
-| `python3` inline `ast.parse` of analysis, monitoring, scheduler and config source | All 4 parsed; no duplicate top-level definitions at inspection. Static syntax only; no imports/runtime verification |
-| `python3` inline `urllib.request` fetch of `https://api.crossref.org/works/10.1109/ICIP.2018.8451652` and `https://api.crossref.org/works/10.1126/science.1244693` | Both requests succeeded and confirmed DOI/title/venue/year metadata. No training library imported |
-| Web search/open of author, dataset and official-service references | Verified the bibliography's required sources; Science publisher returned 403 and Nature redirected, so Crossref/author/PANGAEA records are cited honestly |
+| `cat models/registry.json reports/ml/*.json training/README.md reports/demo/site_results.json`, followed by separate bounded reads | Read approved measurement sources fully before editing; large combined output required separate reads |
+| `cat README.md docs/README.md docs/ENGINEERING_CONTRACT.md` and focused code reads | Rechecked setup, snapshot restoration, provider retry/deadline, classification/seasonal rules, grouping and UI routes/labels |
+| `python3 -m venv /tmp/sentinelwatch-docs-venv` | Created isolated documentation tools environment; no project dependency installation |
+| `/tmp/sentinelwatch-docs-venv/bin/python -m pip install --quiet playwright pillow markdown pymupdf reportlab` and `... -m pip install --quiet beautifulsoup4` | Completed in the temporary venv |
+| `/tmp/sentinelwatch-docs-venv/bin/python -m playwright install chromium` | Browser available for the requested capture workflow |
+| `/tmp/sentinelwatch-docs-venv/bin/python /tmp/sentinelwatch-walk.py` | Nine screens captured; zero console errors, zero page errors and zero attempted mutation requests. GET/HEAD-only browser guard |
+| `/tmp/sentinelwatch-docs-venv/bin/python /tmp/sentinelwatch-refine.py` | Five follow-up checks passed: Jewar authorised selection, slider arrow-key movement, Wayanad breadcrumb, saved history link and Kerala inbox. Zero browser errors. An initial wrong expected heading timed out, then the corrected real label passed |
+| `npm install --prefix /tmp/sentinelwatch-mermaid --no-audit --no-fund @mermaid-js/mermaid-cli` | CLI installed under `/tmp`; no project or system-wide install |
+| `/tmp/sentinelwatch-docs-venv/bin/python /tmp/sw-render-diagrams.py` | Final rendering pass: ten diagrams passed, zero failed. The initial CLI width flag was unsupported; corrected to the installed CLI's `--size` option |
+| `/tmp/sentinelwatch-mermaid/node_modules/.bin/mmdc -p /tmp/sw-puppeteer.json -i docs/diagrams/dfd-level-0.mmd -o docs/diagrams/rendered/dfd-level-0.png --size 2400 -s 1.5 -b white` | Refreshed layout after visible edge-label crowding; inspected in the final PDF |
+| `/tmp/sentinelwatch-mermaid/node_modules/.bin/mmdc -p /tmp/sw-puppeteer.json -i docs/diagrams/dfd-level-2.mmd -o docs/diagrams/rendered/dfd-level-2.png --size 2400 -s 1.5 -b white` | Refreshed earlier-year reference wording; inspected in the final PDF |
+| `/tmp/sentinelwatch-docs-venv/bin/python /tmp/sw-pdf-build.py` | Final PDF built from the report Markdown with all nineteen image assets, contents and page numbers |
+| `/tmp/sentinelwatch-docs-venv/bin/python /tmp/sw-inspect-pdf.py` and image viewing | 38 pages rendered; all pages viewed, including updated diagram pages. Zero text-boundary violations; 31 outline/contents entries. Visual inspection found no overflowing tables |
+| `/tmp/sentinelwatch-docs-venv/bin/python /tmp/sw-check-docs.py` | 47 checks passed, zero errors: local target existence, forbidden/stale states, screenshot dimensions/size, diagram presence, checkpoint/test hashes, measured F1/site values, viva numbering and PDF contents/size |
+| Requested recursive token grep over README, release notes, changelog and docs | No output; exit 1 means zero leftover tokens |
+| `git diff --check -- README.md RELEASE_NOTES.md CHANGELOG.md docs/ output/pdf/` | Final pass has zero whitespace errors. One trailing-space finding in the first text commit was corrected in the follow-up |
+| Fetch `https://arxiv.org/html/1810.08462` | Table 1 confirms the cited published score. The PDF endpoint first timed out; the HTML full text was available |
 
-Final static-check output: **10 Markdown files; 48 relative links; 6 explicitly declared missing screenshot placeholders; 0 errors. ER: 16 entities, 122 selected columns, 23 actual foreign-key columns. Viva: 70 questions. Tokens: 23 distinct tokens inventoried (18 metric, 5 result).** Final `git diff --check -- <explicit owned paths>` also passed with 0 whitespace errors. The temporary checker scripts contain only static file/AST processing and Mermaid parsing. They do not launch the app or load a checkpoint.
+The prior `offline_proof`, `offline_ui_proof`, `restore_proof` and `soak` results are attributed to `reports/demo/site_results.json`. They were not rerun during this documentation task and are not a new full-suite result.
 
-## Integrator actions before presentation/submission
+## Not exercised or not independently verified
 
-- Reconcile documentation with the final backend/UI/ML commits, especially changes still being edited at handoff. Read the current rule implementation before presenting it.
-- Fill every measurement/result token in the report inventory from checkpoint-matched registry/reports and inspected actual run/case evidence. If absent, leave it pending rather than substituting an estimate.
-- Reconcile the missing explicit SciPy operational dependency. Verify launch scripts or use the documented manual setup. Run the final appropriate isolated test/lint commands once; report their actual counts separately from these static documentation checks.
-- Rehearse the ten-minute click path on the presentation machine and projector. Inspect one completed real case with dates, origin, method, seasonal reference state, zone qualification and channel outcomes. Do not depend on a new live scene.
-- Capture genuine screenshots using the six documented names and provenance. Check that no sensitive information is visible.
-- If email is demonstrated, use an explicitly permitted controlled recipient and distinguish SMTP acceptance from receipt. `.example` seeds cannot receive government mail.
-- Delete the obsolete project-review PDF and build a new report PDF only after reconciling final sources/tokens. This worker intentionally does neither.
-- Verify deployment independently; this machine has no Docker. Review public evidence/read access and single-process scheduler assumptions before sharing a public URL.
+- **Docker image never built here (Docker not installed).** The Dockerfile was read; it now includes CPU PyTorch and operational requirements.
+- **`scripts/run.ps1` never run on Windows.** Both launcher files are present; no Windows portability pass is claimed.
+- **SMTP real delivery not exercised.** Seeded `.example` inboxes are illustrative. Saved-to-outbox is unsent; snapshot export omits message bodies. SMTP acceptance would not prove receipt.
+- **Login tested in the test suite only.** No interactive login was exercised here; public reads/evidence remain a deployment limit.
+- **Alert chime never heard in headless runs.** No audible verification is claimed.
+- **No overnight scheduler run.** Overnight imagery-read observations and the shorter recorded soak do not establish overnight scheduled checking.
+- **Verdicts have no field validation.** The local register is incomplete, boundaries are illustrative, and causes/seasonality remain screening heuristics.
+- Full provider/run identifiers, detailed seasonal-reference metadata and per-region zone overlap values are absent from the approved site-result artifact. Those sentences were rewritten as evidence limits, not filled with invented values.
+- The observed imagery-read failures have no proven cause. Docker, real SMTP delivery, Windows and field validation remain outside the completed evidence package.
+
+## Real UI defect reported, not fixed
+
+For a multi-year pair the backend deliberately seeks a seasonal reference near the baseline period, but the UI's generic reference description/reasons can still say “a year earlier” or “last year.” Jewar's saved case demonstrates this mismatch. The guide tells the presenter to read the actual date. No application code was changed. No JavaScript console errors were observed in the capture or follow-up navigation passes.

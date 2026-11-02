@@ -1,10 +1,11 @@
+%%{init: {"flowchart": {"rankSpacing": 180}}}%%
 flowchart LR
-  OP[Operator and reviewer] -->|Site geometry, schedules, replay and review actions| SW((SentinelWatch))
-  SW -->|Status, evidence, reasons, alerts and PDF| OP
+  OP[Operator and reviewer] -->|Site geometry and schedules<br/>Replay and review actions| SW((SentinelWatch))
+  SW -->|Status, evidence and reasons<br/>Alerts and PDF| OP
   SW -->|AOI, dates and asset reads| SAT[Sentinel-2 provider chain]
-  SAT -->|Real catalogue metadata, bands and SCL| SW
-  SW -->|Location and date queries| CTX[Rainfall, disaster, OSM and terrain services]
-  CTX -->|Optional corroboration or unavailable state| SW
+  SAT -->|Catalogue metadata<br/>Bands and SCL| SW
+  SW -->|Location and date queries| CTX[Optional rain, disaster,<br/>OSM and terrain context<br/>or unavailable state]
+  CTX --> SW
   SW -->|In-app inbox routing| DEPT[Department reviewer]
   DEPT -->|Acknowledgement and outcome| SW
   SW -->|Email only when configured| SMTP[SMTP service]
