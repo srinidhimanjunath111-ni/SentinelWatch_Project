@@ -51,7 +51,7 @@ The prior `offline_proof`, `offline_ui_proof`, `restore_proof` and `soak` result
 ## Not exercised or not independently verified
 
 - **Docker image never built here (Docker not installed).** The Dockerfile was read; it now includes CPU PyTorch and operational requirements.
-- **`scripts/run.ps1` never run on Windows.** Both launcher files are present; no Windows portability pass is claimed.
+- **`scripts/run.ps1` never run on Windows.** Its control flow was exercised with stub interpreters under PowerShell 7 on macOS, and the Python code was only read for Windows hazards; no Windows portability pass is claimed.
 - **SMTP real delivery not exercised.** Seeded `.example` inboxes are illustrative. Saved-to-outbox is unsent; snapshot export omits message bodies. SMTP acceptance would not prove receipt.
 - **Login tested in the test suite only.** No interactive login was exercised here; public reads/evidence remain a deployment limit.
 - **Alert chime never heard in headless runs.** No audible verification is claimed.

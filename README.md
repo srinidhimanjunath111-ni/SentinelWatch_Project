@@ -38,7 +38,16 @@ Rawa is the weakest evidence, with a tile mismatch against the research dossier 
 
 ## Quick start
 
-Use Python 3.12 and a virtual environment. Run from the repository root. Both launch scripts are present and install operational requirements plus PyTorch when needed. The Windows script has not been run on Windows here. The exam demo server is already running; leave it running during presentation preparation.
+Everything is in this repository: both trained models (`models/checkpoints/`), the saved demo data (`demo_snapshot/`) and the final report PDF (`output/pdf/`). **Training is not needed**, and neither are API keys or a `.env` file. Install Python 3.12 first. The first start also needs internet access.
+
+The finished work is on the `feature/complete-sentinelwatch` branch, so clone that branch rather than `main`:
+
+```sh
+git clone --branch feature/complete-sentinelwatch https://github.com/srinidhimanjunath111-ni/SentinelWatch_Project.git
+cd SentinelWatch_Project
+```
+
+Then start it from the repository root and open `http://127.0.0.1:8000`.
 
 macOS/Linux:
 
@@ -49,8 +58,12 @@ bash scripts/run.sh
 Windows PowerShell:
 
 ```powershell
-.\scripts\run.ps1
+powershell -ExecutionPolicy Bypass -File scripts\run.ps1
 ```
+
+The launch script creates a virtual environment and installs the requirements plus PyTorch. On the tested Mac this took under 2 minutes, and later starts skip it. It then restores 7 sites, 14 cases and 20 alerts. No GPU is needed: the models use CUDA or Apple GPUs when present and otherwise the CPU. Imagery is cached as it is used, so the first replay of each site downloads it. Run the replays you plan to show once beforehand, as the [demo guide](docs/SentinelWatch_Demo_Guide.md) explains.
+
+The Windows script has not been run on Windows; its control flow was only exercised with stub interpreters under PowerShell 7 on macOS.
 
 Manual macOS/Linux setup:
 
@@ -72,7 +85,7 @@ Copy-Item .env.example .env
 
 Copy the configuration template only on first setup; preserve an existing `.env`. Open [the console](http://127.0.0.1:8000), [health](http://127.0.0.1:8000/api/health) or [API documentation](http://127.0.0.1:8000/docs). SQLite and storage directories are created at startup. Launch commands are instructions, not a claim that Windows or Linux execution was tested here.
 
-The operational requirements now explicitly include SciPy and ReportLab. The launch scripts attempt PyTorch installation; without a loadable model the run records its spectral fallback. Both installed checkpoints are evaluated and registered as `READY`. A clean-install restoration is recorded in `reports/demo/site_results.json`; those earlier checks were not repeated against the running demo instance. For the authoritative training recipe, use [training/README.md](training/README.md).
+The operational requirements now explicitly include SciPy and ReportLab. The launch scripts attempt PyTorch installation; without a loadable model the run records its spectral fallback. Both installed checkpoints are evaluated and registered as `READY`. A clean-install restoration is recorded in `reports/demo/site_results.json`. For the authoritative training recipe, use [training/README.md](training/README.md).
 
 ## Configuration
 

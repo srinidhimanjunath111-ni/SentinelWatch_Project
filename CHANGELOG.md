@@ -6,6 +6,7 @@ Source: `git log --oneline -30` on `feature/complete-sentinelwatch`, re-read whi
 
 ### Final measured package
 
+- Clean-clone handover check: an anonymous clone of the branch started with `scripts/run.sh` on Python 3.15, without training, keys or `.env`. On CPU with no cached imagery, the Wayanad replay finished in about 104 s and reproduced the 76.71 ha landslide; images and the case PDF were served. `scripts/run.ps1` no longer stops when the `py` launcher is missing or at the PyTorch check, and the README quick start now covers getting the branch. The launcher fix was tested with stubs under PowerShell 7 on macOS, not on Windows.
 - Installed v2: OSCD F1 0.461 and India forest F1 0.516; v1 comparison 0.248 and 0.101. Land-cover accuracy 0.560 and macro F1 0.526. Registry/report reconciliation includes non-blind selection, 0.289 out-of-fold OSCD F1, city variation and reference-label limits.
 - `c290d23` — v2 replacement after the v1 investigation; `190ce3a` — training guide, dataset summaries and CPU timing.
 - `2107429` — bounded imagery fetches and cached replay during outages; `c4dc5c6` — illustrative-boundary review routing.

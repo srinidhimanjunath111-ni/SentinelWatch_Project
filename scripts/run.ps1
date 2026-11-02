@@ -12,8 +12,13 @@ $python = ".venv\Scripts\python.exe"
 
 if (-not (Test-Path $python)) {
     Write-Host "Creating .venv"
-    py -3 -m venv .venv
-    if ($LASTEXITCODE -ne 0) { python -m venv .venv }
+    # A missing command is a terminating error here, so check before calling each launcher.
+    if (Get-Command py -ErrorAction SilentlyContinue) { py -3 -m venv .venv }
+    if (-not (Test-Path $python) -and (Get-Command python -ErrorAction SilentlyContinue)) { python -m venv .venv }
+    if (-not (Test-Path $python)) {
+        Write-Host "Python was not found. Install Python 3.12 from https://www.python.org/downloads/ and run this again."
+        exit 1
+    }
 }
 
 $stamp = ".venv\.requirements-installed"
@@ -32,7 +37,8 @@ if ($stale) {
 }
 
 if (-not $NoModels) {
-    & $python -c "import torch" 2>$null
+    # Checked without importing: Windows PowerShell 5.1 stops on a redirected stderr line.
+    & $python -c "import importlib.util, sys; sys.exit(0 if importlib.util.find_spec('torch') else 1)"
     if ($LASTEXITCODE -ne 0) {
         Write-Host "Installing PyTorch"
         & $python -m pip install --quiet torch
