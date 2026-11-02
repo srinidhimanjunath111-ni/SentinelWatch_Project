@@ -27,7 +27,7 @@
     "replay": {
       "start_date": "2021-03-20",
       "end_date": "2025-03-24",
-      "note": "Expected from the inspected pair: activity matching a registered zone. The pair brackets multi-year construction, not a single-day event. Nearby fields also change with crops. Only construction inside the illustrative registered platform should match the zone; the document does not establish compliance with every condition."
+      "note": "Compares March 2021 with March 2025, across years of construction. The registered zone outline is approximate, and nearby fields also change with crops."
     }
   },
   {
@@ -63,7 +63,7 @@
     "replay": {
       "start_date": "2021-01-27",
       "end_date": "2025-01-06",
-      "note": "Expected from the inspected pair: activity matching a registered zone. This pair demonstrates building on prepared land, not the original hill removal or mangrove reclamation. Wetland changes outside the airport platform must be judged separately. The old and renewed clearance have separate registry periods."
+      "note": "Compares January 2021 with January 2025. This shows building on prepared land, not the earlier hill removal or mangrove reclamation. The registered zone outline is approximate."
     }
   },
   {
@@ -98,7 +98,7 @@
     "replay": {
       "start_date": "2021-02-24",
       "end_date": "2025-03-25",
-      "note": "Expected from the inspected pair: activity matching a registered zone. Authorised is a registry match, not a legal conclusion. The zone is a conservative illustrative mine footprint, not the lease or full Phase-II forest-diversion boundary. Its start date is the documented state permission of 25 March 2022, so early replay scenes before that date are not covered by this entry."
+      "note": "Compares February 2021 with March 2025. The registered outline is approximate and smaller than the full lease, and the clearance has been contested in court."
     }
   },
   {
@@ -133,7 +133,7 @@
     "replay": {
       "start_date": "2021-03-05",
       "end_date": "2025-03-24",
-      "note": "Expected from the inspected pair: physical change with no authorisation on record. The monitored area crosses a state boundary; imagery alone cannot place individual cuts in a state or lease. The reported encroachment is too small to attribute reliably at 10 m. Nearby Rajasthan permits are explicitly documented. Never describe all visible quarrying as unauthorised. A cross-tile 2021 candidate had visibly different alignment and was rejected; only Sentinel-2 tile 43RGL is used for the pair."
+      "note": "Compares March 2021 with March 2025. The area crosses a state boundary and permits exist nearby, so imagery alone cannot tie an individual cut to a state or lease."
     }
   },
   {
@@ -168,7 +168,7 @@
     "replay": {
       "start_date": "2024-02-05",
       "end_date": "2024-12-16",
-      "note": "Expected from the inspected pair: a natural event. The checked clear dates are 5 February and 16 December 2024: the latter is a delayed optical view, not immediate disaster detection. A 5.5 km monitored area cannot contain the complete approximately 8 km runout. Do not call this Puthumala: the selected corridor is the 2024 Mundakkai–Chooralmala event, distinct from the 2019 Puthumala disaster."
+      "note": "Compares 5 February and 16 December 2024. Cloud delayed the later image by months after the 30 July 2024 debris flow. The area covers part of the roughly 8 km runout."
     }
   },
   {
@@ -198,7 +198,7 @@
     "replay": {
       "start_date": "2023-11-09",
       "end_date": "2024-04-17",
-      "note": "Expected from the inspected pair: a seasonal change with no alert. This is an interior forest–meadow mosaic, not a verified buffer cadastral polygon or a pure sal stand. No conspicuous new clearing is visible in these checked views; this is not proof that none occurred between dates. Do not infer leaf loss from NDVI alone."
+      "note": "Compares November 2023 with April 2024, using an April 2023 reference, to separate dry-season browning from lasting change."
     }
   },
   {
@@ -229,7 +229,7 @@
     "replay": {
       "start_date": "2023-06-08",
       "end_date": "2023-07-13",
-      "note": "Expected from the inspected pair: a natural event. The after scene has 77.16% tile cloud and 79.71% usable pixels inside the monitored area; cloud covers other parts of the monitored area. No fully clear after image was found between 12 July and 5 August in the inspected tile. This is a conditional flood replay, not a routine clear-scene recommendation. This site allows tile cloud up to 85 percent so that replay can reach that scene; the usual 40 percent would exclude it. Only valid pixels should enter analysis. These dates bracket the documented 12–13 July flood, but do not establish an exact onset or peak at every pixel."
+      "note": "Compares 8 June and 13 July 2023, around the documented 12-13 July flood. Cloud covers part of the later image, so about 80% of the area could be analysed."
     },
     "max_cloud_cover": 85
   }

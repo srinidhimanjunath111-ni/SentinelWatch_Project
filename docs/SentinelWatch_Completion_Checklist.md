@@ -63,3 +63,7 @@ The prior `offline_proof`, `offline_ui_proof`, `restore_proof` and `soak` result
 ## Real UI defect reported, not fixed
 
 For a multi-year pair the backend deliberately seeks a seasonal reference near the baseline period, but the UI's generic reference description/reasons can still say “a year earlier” or “last year.” Jewar's saved case demonstrates this mismatch. The guide tells the presenter to read the actual date. No application code was changed. No JavaScript console errors were observed in the capture or follow-up navigation passes.
+
+## Final browser rehearsal
+
+Run at 1280 × 720 against an isolated copy of the app with cached imagery. Replay started from the pre-filled form, the alert banner fired in 12.7 s (Wayanad), 10.9 s (Delhi) and 11.1 s (repeat Wayanad), then the incident opened, the slider worked by keyboard, Acknowledge and Send to field verification applied, a valid 812 KB case PDF downloaded, and Departments, Alerts, Zones and Models rendered. Zero browser console errors and zero server errors. A drawn oversized site was rejected with its size limit. Saving a new site was not repeated in this rehearsal. The audible chime remains unheard.

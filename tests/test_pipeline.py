@@ -186,7 +186,7 @@ def test_missing_reference_is_recorded_as_null():
     _run(make_area())
     finding = _rows(Finding)[0]
     assert finding.seasonal_persists is None
-    assert "No clear same-season scene" in finding.verdict_reasons_json
+    assert "No clear scene from the same season" in finding.verdict_reasons_json
     assert _rows(Case)[0].seasonal_reference_json is None
 
 

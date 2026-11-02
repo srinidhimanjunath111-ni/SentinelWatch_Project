@@ -183,13 +183,13 @@ def test_false_deforestation_from_leaf_fall_is_benign_with_reason():
     assert assessment.verdict == "SEASONAL_BENIGN"
     assert assessment.category == "SEASONAL_VEGETATION"
     assert assessment.seasonal_persists is False
-    assert "same season last year" in assessment.reasons[0]
+    assert "same-season reference" in assessment.reasons[0]
 
 
 def test_missing_reference_is_null_and_says_so():
     assessment = _assess(_scene(FOREST), _scene(FOREST, BARE), from_class=TREE, to_class=BARE_CLASS)
     assert assessment.seasonal_persists is None
-    assert any("No clear same-season scene" in reason for reason in assessment.reasons)
+    assert any("No clear scene from the same season" in reason for reason in assessment.reasons)
 
 
 def test_year_on_year_offset_comes_from_stable_pixels_outside_the_change():

@@ -332,7 +332,7 @@ def _evidence_story(case: Case, styles: dict[str, ParagraphStyle]) -> list[Any]:
                         [
                             picture,
                             _paragraph(
-                                f"Same-season reference from last year: {reference.get('date')} "
+                                f"Same-season reference: {reference.get('date')} "
                                 f"({reference.get('product_id')}).",
                                 styles["BodySmall"],
                             ),
@@ -384,7 +384,7 @@ def _finding_block(index: int, finding: Any, styles: dict[str, ParagraphStyle]) 
         ("Area", _format_number(finding.area_m2, " m²", 0)),
         ("Centre (lat, lon)", f"{finding.centroid_lat}, {finding.centroid_lon}"),
         ("Evidence score", _format_number(finding.confidence, digits=2)),
-        ("Differs from last year", persists),
+        ("Differs from same-season reference", persists),
         (
             "Index changes",
             ", ".join(f"{key.removesuffix('_delta').upper()} {value:+.2f}" for key, value in indices.items()),

@@ -496,9 +496,9 @@ export async function mountIncident(root, params) {
   function seasonalSentence() {
     const finding = currentFinding();
     const persists = finding ? finding.seasonal_persists : null;
-    if (persists === true) return "Against the same season a year earlier, this region still shows the change, so it does not read as a seasonal pattern.";
-    if (persists === false) return "This region looks much the same as it did in the same season a year earlier, which points to a seasonal pattern.";
-    return "Reference scene from about a year earlier, used to separate seasonal change from lasting change.";
+    if (persists === true) return "Against this earlier same-season scene, this region still shows the change, so it does not read as a seasonal pattern.";
+    if (persists === false) return "This region looks much the same as it did in this earlier same-season scene, which points to a seasonal pattern.";
+    return "Earlier same-season reference scene, used to separate seasonal change from lasting change.";
   }
 
   function renderSeasonal() {

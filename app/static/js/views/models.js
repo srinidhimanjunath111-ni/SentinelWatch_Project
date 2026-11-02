@@ -15,7 +15,7 @@ const STAGES = [
   { key: "cloud", title: "Cloud mask", detail: "SCL drops cloud, shadow, cirrus" },
   { key: "change", title: "Change model", detail: "Siamese U-Net on six bands" },
   { key: "landcover", title: "Land cover", detail: "Eight classes, before and after" },
-  { key: "seasonal", title: "Seasonal test", detail: "Same season, one year earlier" },
+  { key: "seasonal", title: "Seasonal test", detail: "Same season, earlier year" },
   { key: "auth", title: "Authorisation test", detail: "Checks the zone register" },
   { key: "verdict", title: "Verdict", detail: "Five outcomes, with reasons" },
   { key: "dispatch", title: "Dispatch", detail: "Routed to the department" },

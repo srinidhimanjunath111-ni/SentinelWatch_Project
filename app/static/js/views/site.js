@@ -261,7 +261,7 @@ export async function mountSite(root, params) {
     const suggested = area.suggested_replay || {};
     const startInput = h("input.input", { id: "replay-start", type: "date", value: suggested.start_date || isoDate(start), max: isoDate(end), min: "2017-01-01", required: true });
     const endInput = h("input.input", { id: "replay-end", type: "date", value: suggested.end_date || isoDate(end), max: isoDate(today), min: "2017-01-01", required: true });
-    const scenes = h("input.input", { id: "replay-max", type: "number", value: 6, min: 2, max: 30, required: true });
+    const scenes = h("input.input", { id: "replay-max", type: "number", value: suggested.start_date ? 2 : 6, min: 2, max: 30, required: true });
     const error = h("p.form-error", { role: "alert", hidden: true });
     const submit = h("button.btn", { type: "submit" }, icon("history"), "Start replay");
     return h("form.form", {

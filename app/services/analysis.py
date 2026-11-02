@@ -778,16 +778,16 @@ def assess_region(
         seasonal = replace(seasonal, persists=None, status="inconclusive")
     if seasonal.status == "no_reference":
         reasons.append(
-            "No clear same-season scene from last year was available, so seasonality could not be tested."
+            "No clear scene from the same season of an earlier year was available, so seasonality could not be tested."
         )
     elif seasonal.status == "low_coverage":
         reasons.append(
-            f"Last year's same-season scene covered only {coverage:.0%} of this region, so seasonality could not be tested."
+            f"The earlier same-season scene covered only {coverage:.0%} of this region, so seasonality could not be tested."
         )
     elif seasonal.status == "inconclusive":
         reasons.append(
             f"Compared with {context.reference_date} this region neither keeps the change nor "
-            f"matches last year ({seasonal.similar_fraction:.0%} similar), so seasonality is undecided."
+            f"matches that reference ({seasonal.similar_fraction:.0%} similar), so seasonality is undecided."
         )
     elif persists and category == "CROP_CYCLE":
         reasons.append(
@@ -805,8 +805,8 @@ def assess_region(
     if persists is False:
         reasons.insert(
             0,
-            f"Compared with the same season last year ({context.reference_date}) this region "
-            f"looks the same: {seasonal.similar_fraction:.0%} of it matches last year's values, "
+            f"Compared with the same-season reference ({context.reference_date}) this region "
+            f"looks the same: {seasonal.similar_fraction:.0%} of it matches the reference values, "
             "so the change is seasonal.",
         )
         verdict = SEASONAL_BENIGN
