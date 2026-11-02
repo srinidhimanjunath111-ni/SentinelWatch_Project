@@ -3,11 +3,12 @@ from fastapi.testclient import TestClient
 from app.main import app
 
 
-def test_health_endpoint():
+def test_health_reports_version_and_uptime():
     with TestClient(app) as client:
-        response = client.get("/api/health")
-    assert response.status_code == 200
-    assert response.json()["status"] == "ok"
+        body = client.get("/api/health").json()
+    assert body["status"] == "ok"
+    assert body["version"] == "3.0.0"
+    assert body["uptime_seconds"] >= 0
 
 
 def test_dashboard_is_served():

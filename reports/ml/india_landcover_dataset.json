@@ -1,0 +1,70 @@
+{
+  "chips": 822,
+  "by_split": {
+    "train": {
+      "chips": 580,
+      "tiles": 49,
+      "class_pixels": {
+        "tree": 10459395,
+        "shrub_grass": 5358962,
+        "crop": 10202306,
+        "built": 1754005,
+        "bare": 1824122,
+        "water": 3405507,
+        "wetland": 1473299,
+        "mine": 3056463
+      }
+    },
+    "val": {
+      "chips": 124,
+      "tiles": 5,
+      "class_pixels": {
+        "tree": 1950630,
+        "shrub_grass": 1111257,
+        "crop": 2812299,
+        "built": 562988,
+        "bare": 111802,
+        "water": 439965,
+        "wetland": 83541,
+        "mine": 935954
+      }
+    },
+    "test": {
+      "chips": 118,
+      "tiles": 5,
+      "class_pixels": {
+        "tree": 1678959,
+        "shrub_grass": 1426028,
+        "crop": 2231001,
+        "built": 288682,
+        "bare": 414751,
+        "water": 234830,
+        "wetland": 153520,
+        "mine": 1258948
+      }
+    }
+  },
+  "test_tiles": {
+    "N15E075": "Bellary iron ore, Deccan",
+    "N24E081": "Singrauli coal, central India",
+    "N24E090": "Meghalaya and Assam, north-east forest and wetland",
+    "N27E072": "Thar desert",
+    "N09E075": "Kerala, Western Ghats, backwaters"
+  },
+  "val_tiles": {
+    "N21E081": "Korba coal, Chhattisgarh",
+    "N27E075": "Delhi and Jaipur, cropland and cities",
+    "N12E075": "Mysuru and Bengaluru, southern plateau",
+    "N21E087": "Odisha and Bengal coast, delta",
+    "N30E075": "Himachal and Punjab, Himalayan foothills"
+  },
+  "scene_months": {
+    "2021-01": 25,
+    "2021-02": 106,
+    "2021-03": 146,
+    "2021-04": 133,
+    "2021-10": 52,
+    "2021-11": 110,
+    "2021-12": 250
+  }
+}

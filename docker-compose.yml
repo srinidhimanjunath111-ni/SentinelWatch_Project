@@ -3,10 +3,16 @@ services:
     build: .
     ports:
       - "8000:8000"
-    environment:
-      DATABASE_URL: sqlite:///./instance/sentinelwatch.db
-      STORAGE_DIR: storage
+    env_file:
+      - path: .env
+        required: false
     volumes:
-      - ./instance:/app/instance
-      - ./storage:/app/storage
+      - sentinelwatch-instance:/app/instance
+      - sentinelwatch-storage:/app/storage
+      - sentinelwatch-logs:/app/logs
+    restart: unless-stopped
 
+volumes:
+  sentinelwatch-instance:
+  sentinelwatch-storage:
+  sentinelwatch-logs:

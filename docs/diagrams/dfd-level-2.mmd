@@ -1,15 +1,24 @@
 flowchart TB
-  A[AOI + monitoring run] --> S[Search STAC metadata]
-  S --> C[Persist acquisitions / catalogue refresh]
-  C --> P[Choose before and after observations]
-  P --> Q{Credentials and rasterio available?}
-  Q -- No --> X[Record blocked / failed run; no false analysis]
-  Q -- Yes --> R[Request six-band GeoTIFF]
-  R --> G[Align rasters, mask cloud/shadow, calculate NDVI]
-  G --> M{Validated Siamese checkpoint?}
-  M -- Yes --> ML[Siamese U-Net probability map]
-  M -- No --> B[Spectral baseline probability map]
-  ML --> T[Threshold, morphology, connected components]
-  B --> T
-  T --> F[Classify region, calculate area, save finding]
-  F --> L[Create deduplicated alert when threshold is met]
+  R[Queued live or archive replay run] --> S[2.1 Search and persist actual scene metadata]
+  S <--> P[Ordered provider failover and disk cache]
+  S --> C[2.2 Read AOI SCL and select new usable later scene]
+  C --> B[2.3 Select older baseline; extend search if needed]
+  B --> REF[2.4 Seek same-season reference from an earlier year]
+  REF --> A[2.5 Align six bands and buffered valid masks]
+  A --> M{Change checkpoint available?}
+  M -- Yes --> ML[2.6 Siamese probability and spectral fusion]
+  M -- No --> SP[2.6 Labelled spectral change fallback]
+  ML --> REG[2.7 Morphology and connected regions]
+  SP --> REG
+  A --> LC[2.8 Land-cover U-Net or labelled spectral classes]
+  LC --> CAUSE[2.9 Ordered cause rules]
+  REG --> CAUSE
+  CTX[Optional rain, disasters, OSM and slope] --> CAUSE
+  CAUSE --> SEAS[2.10 Same-season persistence test or unknown]
+  SEAS --> AUTH[2.11 Verdict and date-type-overlap zone check]
+  Z[(Local authorised zones)] --> AUTH
+  AUTH --> E[(Case, findings, evidence and reasons)]
+  E --> EL[2.12 Apply score and category filters; merge repeated regions]
+  EL --> DIS[2.13 Dispatch new eligible alerts; retain seasonal evidence without alert]
+  S -. provider failure or no usable pair .-> END[Persist truthful terminal run state]
+  REG -. no retained change .-> END

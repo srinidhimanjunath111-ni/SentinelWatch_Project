@@ -1,87 +1,240 @@
-"""Paired image/mask dataset compatible with LEVIR-style directory layouts."""
+"""Random-crop samplers for the change and land-cover models.
+
+Batches are built directly rather than through a DataLoader: crop size changes per batch, the
+arrays are already in memory, and worker processes would only add RAM on an 8 GB machine.
+"""
 
 from __future__ import annotations
 
-from pathlib import Path
+from dataclasses import dataclass
 
 import numpy as np
-from PIL import Image
 
-try:
-    import torch
-    from torch.utils.data import Dataset
-except ImportError as error:  # pragma: no cover
-    raise ImportError("Install requirements-ml.txt for model training.") from error
+from app.ml.preprocessing import (
+    NORMALISE_POOLED,
+    apply_statistics,
+    normalise_scene,
+    pair_statistics,
+)
+from data_tools.fetch_oscd import IGNORE, ChangeRecord
+
+CROP_SIZES = (128, 160, 192, 224, 256)
+REFLECTANCE_SCALE = 1.0 / 10000.0
 
 
-IMAGE_EXTENSIONS = {".png", ".jpg", ".jpeg", ".tif", ".tiff", ".webp"}
+def mean_pixels_per_step(batch_size: int) -> float:
+    """Mean pixels drawn per step under the crop sizes and batch rule in ChangeSampler.batch."""
+
+    return float(np.mean([_batch_count(batch_size, size) * size * size for size in CROP_SIZES]))
 
 
-class ChangePairDataset(Dataset):
-    """Reads `<root>/<split>/{A,B,label}/same_filename` folders.
+def _batch_count(batch_size: int, size: int) -> int:
+    # Hold memory per step near constant: larger crops get a smaller batch. Measured on the 8 GB
+    # machine, 8 x 192 px peaks at 3.3 GB of MPS memory, so 6 x 192 px (about 2.5 GB) is the ceiling.
+    return max(3, min(batch_size, int(batch_size * (192 / size) ** 2)))
 
-    `A` is the before image and `B` is the after image. Mask values above zero
-    represent change. The paired geometric augmentation is important: applying a
-    different flip/crop to dates would corrupt the learning target.
+
+def to_reflectance(stack: np.ndarray) -> np.ndarray:
+    """OSCD and the India caches store reflectance x 10000 as uint16."""
+
+    return stack.astype(np.float32) * REFLECTANCE_SCALE
+
+
+def _geometric(arrays: list[np.ndarray], rng: np.random.Generator) -> list[np.ndarray]:
+    """Apply one identical flip and 90-degree rotation to every array; dates stay co-registered."""
+
+    if rng.random() < 0.5:
+        arrays = [np.flip(a, axis=-1) for a in arrays]
+    if rng.random() < 0.5:
+        arrays = [np.flip(a, axis=-2) for a in arrays]
+    turns = int(rng.integers(0, 4))
+    if turns:
+        arrays = [np.rot90(a, turns, axes=(-2, -1)) for a in arrays]
+    return [a.copy() for a in arrays]
+
+
+@dataclass
+class ChangeAugment:
+    """Training augmentation strengths for the change sampler."""
+
+    positive_crop_probability: float = 0.75
+    # Draw this many crops around change and keep the one with the most change. One draw left
+    # training batches at 3.8 percent change against a 2.3 percent base rate, barely enriched.
+    positive_crop_candidates: int = 6
+    # Probability of shifting one date by 1 px. Measured OSCD pairs sit up to 1-2 px apart, and
+    # training on them unshifted teaches the model to read misregistration edges as change.
+    misregistration_probability: float = 0.3
+    gain_jitter: float = 0.05
+    offset_jitter: float = 0.005
+    full_scene_stats_probability: float = 0.5
+    cutout_probability: float = 0.15
+    identity_probability: float = 0.05
+
+
+class ChangeSampler:
+    """Draws augmented batches from change records, optionally balancing named sources.
+
+    Normalisation statistics come from the crop half the time and the whole record the other half.
+    Live AOIs vary in size, so the model should not depend on one statistics footprint.
     """
 
-    def __init__(self, root: str | Path, split: str, image_size: int = 256, augment: bool = False):
-        self.root = Path(root) / split
-        self.image_size = image_size
-        self.augment = augment
-        self.before_dir = self.root / "A"
-        self.after_dir = self.root / "B"
-        self.label_dir = self.root / "label"
-        if not all(path.is_dir() for path in (self.before_dir, self.after_dir, self.label_dir)):
-            raise FileNotFoundError(
-                f"Expected {self.root}/A, {self.root}/B, and {self.root}/label directories."
+    def __init__(
+        self,
+        records: list[ChangeRecord],
+        *,
+        seed: int,
+        source_weights: dict[str, float] | None = None,
+        augment: ChangeAugment | None = None,
+        normalisation: str = NORMALISE_POOLED,
+    ):
+        if not records:
+            raise ValueError("ChangeSampler needs at least one record")
+        self.records = records
+        self.augment = augment or ChangeAugment()
+        self.normalisation = normalisation
+        self.rng = np.random.default_rng(seed)
+        # City sizes differ by a factor of 10; sqrt keeps big cities from dominating.
+        weights = np.array([np.sqrt(r.mask.size) for r in records], dtype=np.float64)
+        if source_weights:
+            for source, share in source_weights.items():
+                members = np.array([r.source == source for r in records])
+                if members.any():
+                    weights[members] *= share / weights[members].sum()
+        self.weights = weights / weights.sum()
+        # Index positives once; re-scanning a mask per crop would dominate the sampling time.
+        self.positives = [np.argwhere(r.mask == 1) for r in records]
+        self.record_stats = [
+            pair_statistics(
+                to_reflectance(r.before), to_reflectance(r.after), r.pixel_valid(), normalisation
             )
-        self.samples = []
-        for before in sorted(self.before_dir.iterdir()):
-            if before.suffix.lower() not in IMAGE_EXTENSIONS:
-                continue
-            after, label = self.after_dir / before.name, self.label_dir / before.name
-            if after.exists() and label.exists():
-                self.samples.append((before, after, label))
-        if not self.samples:
-            raise ValueError(f"No matching image pairs found in {self.root}")
+            for r in records
+        ]
 
-    def __len__(self) -> int:
-        return len(self.samples)
+    def _crop_origin(self, index: int, size: int) -> tuple[int, int, int, int]:
+        record = self.records[index]
+        height, width = record.mask.shape
+        crop_h, crop_w = min(size, height), min(size, width)
+        positives = self.positives[index]
+        if len(positives) and self.rng.random() < self.augment.positive_crop_probability:
+            best_count, top, left = -1, 0, 0
+            for _ in range(self.augment.positive_crop_candidates):
+                row, col = positives[self.rng.integers(len(positives))]
+                candidate_top = int(np.clip(int(row) - int(self.rng.integers(0, crop_h)), 0, height - crop_h))
+                candidate_left = int(np.clip(int(col) - int(self.rng.integers(0, crop_w)), 0, width - crop_w))
+                window = record.mask[candidate_top : candidate_top + crop_h, candidate_left : candidate_left + crop_w]
+                count = int(np.count_nonzero(window == 1))
+                if count > best_count:
+                    best_count, top, left = count, candidate_top, candidate_left
+        else:
+            top = int(self.rng.integers(0, height - crop_h + 1))
+            left = int(self.rng.integers(0, width - crop_w + 1))
+        return top, left, crop_h, crop_w
 
-    @staticmethod
-    def _read_image(path: Path, mode: str) -> Image.Image:
-        with Image.open(path) as image:
-            return image.convert(mode).copy()
+    def _radiometric(self, stack: np.ndarray) -> np.ndarray:
+        """Mild per-band gain and offset, independent per date, like a small atmospheric shift."""
 
-    def __getitem__(self, index: int) -> dict[str, torch.Tensor | str]:
-        before_path, after_path, label_path = self.samples[index]
-        before = self._read_image(before_path, "RGB").resize(
-            (self.image_size, self.image_size), Image.Resampling.BILINEAR
+        rng, aug = self.rng, self.augment
+        gain = rng.uniform(1 - aug.gain_jitter, 1 + aug.gain_jitter, (stack.shape[0], 1, 1))
+        offset = rng.uniform(-aug.offset_jitter, aug.offset_jitter, (stack.shape[0], 1, 1))
+        return stack * gain.astype(np.float32) + offset.astype(np.float32)
+
+    def _sample(self, size: int) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+        rng, aug = self.rng, self.augment
+        index = int(rng.choice(len(self.records), p=self.weights))
+        record = self.records[index]
+        top, left, crop_h, crop_w = self._crop_origin(index, size)
+        slices = (slice(top, top + crop_h), slice(left, left + crop_w))
+        before = to_reflectance(record.before[:, slices[0], slices[1]])
+        after = to_reflectance(record.after[:, slices[0], slices[1]])
+        mask = record.mask[slices].astype(np.uint8)
+        valid = record.pixel_valid()[slices]
+        if crop_h != size or crop_w != size:
+            pad = ((0, size - crop_h), (0, size - crop_w))
+            before = np.pad(before, ((0, 0), *pad), mode="reflect")
+            after = np.pad(after, ((0, 0), *pad), mode="reflect")
+            mask = np.pad(mask, pad, mode="reflect")
+            valid = np.pad(valid, pad, mode="reflect")
+        before, after, mask, valid = _geometric([before, after, mask, valid], rng)
+        swapped = rng.random() < 0.5
+        if swapped:
+            before, after = after, before
+        if rng.random() < aug.identity_probability:
+            # A date compared with itself contains no change, whatever the radiometry says.
+            after = before.copy()
+            mask = np.where(mask == IGNORE, IGNORE, 0).astype(np.uint8)
+        if rng.random() < aug.misregistration_probability:
+            shift = (int(rng.integers(-1, 2)), int(rng.integers(-1, 2)))
+            after = np.roll(after, shift, axis=(-2, -1))
+        before = self._radiometric(before)
+        after = self._radiometric(after)
+        if rng.random() < aug.cutout_probability:
+            # Teaches the model that blanked pixels (cloud at inference) carry no change evidence.
+            cut_h, cut_w = rng.integers(size // 8, size // 2, 2)
+            cut_top = int(rng.integers(0, size - cut_h))
+            cut_left = int(rng.integers(0, size - cut_w))
+            valid[cut_top : cut_top + cut_h, cut_left : cut_left + cut_w] = False
+            mask[cut_top : cut_top + cut_h, cut_left : cut_left + cut_w] = IGNORE
+        if rng.random() < aug.full_scene_stats_probability:
+            stats_before, stats_after = self.record_stats[index]
+            if swapped:
+                stats_before, stats_after = stats_after, stats_before
+        else:
+            stats_before, stats_after = pair_statistics(before, after, valid, self.normalisation)
+        return (
+            apply_statistics(before, *stats_before, valid),
+            apply_statistics(after, *stats_after, valid),
+            mask,
         )
-        after = self._read_image(after_path, "RGB").resize(
-            (self.image_size, self.image_size), Image.Resampling.BILINEAR
+
+    def batch(self, batch_size: int) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+        size = int(self.rng.choice(CROP_SIZES))
+        samples = [self._sample(size) for _ in range(_batch_count(batch_size, size))]
+        return (
+            np.stack([s[0] for s in samples]),
+            np.stack([s[1] for s in samples]),
+            np.stack([s[2] for s in samples]),
         )
-        label = self._read_image(label_path, "L").resize(
-            (self.image_size, self.image_size), Image.Resampling.NEAREST
-        )
-        if self.augment:
-            # torch RNG means workers still produce different deterministic samples
-            # under the train script's seeded DataLoader.
-            if torch.rand(()) > 0.5:
-                before = before.transpose(Image.Transpose.FLIP_LEFT_RIGHT)
-                after = after.transpose(Image.Transpose.FLIP_LEFT_RIGHT)
-                label = label.transpose(Image.Transpose.FLIP_LEFT_RIGHT)
-            if torch.rand(()) > 0.5:
-                before = before.transpose(Image.Transpose.FLIP_TOP_BOTTOM)
-                after = after.transpose(Image.Transpose.FLIP_TOP_BOTTOM)
-                label = label.transpose(Image.Transpose.FLIP_TOP_BOTTOM)
-        before_tensor = torch.from_numpy(np.asarray(before).copy()).permute(2, 0, 1).float() / 255.0
-        after_tensor = torch.from_numpy(np.asarray(after).copy()).permute(2, 0, 1).float() / 255.0
-        label_tensor = torch.from_numpy(np.asarray(label).copy()).unsqueeze(0).float() / 255.0
-        return {
-            "before": before_tensor,
-            "after": after_tensor,
-            "mask": (label_tensor > 0.5).float(),
-            "id": before_path.name,
-        }
+
+
+class LandCoverSampler:
+    """Draws augmented land-cover batches. Chips are stored uint16 [6,H,W] with uint8 labels."""
+
+    def __init__(
+        self,
+        scenes: list[np.ndarray],
+        labels: list[np.ndarray],
+        band_mean: np.ndarray,
+        band_std: np.ndarray,
+        *,
+        seed: int,
+        chip_weights: np.ndarray | None = None,
+        crop: int = 192,
+        gain_jitter: float = 0.05,
+    ):
+        self.scenes = scenes
+        self.labels = labels
+        self.mean = band_mean
+        self.std = band_std
+        self.rng = np.random.default_rng(seed)
+        self.crop = crop
+        self.gain_jitter = gain_jitter
+        weights = np.ones(len(scenes)) if chip_weights is None else np.asarray(chip_weights, float)
+        self.weights = weights / weights.sum()
+
+    def _sample(self) -> tuple[np.ndarray, np.ndarray]:
+        rng = self.rng
+        index = int(rng.choice(len(self.scenes), p=self.weights))
+        scene, label = self.scenes[index], self.labels[index]
+        height, width = label.shape
+        top = int(rng.integers(0, height - self.crop + 1))
+        left = int(rng.integers(0, width - self.crop + 1))
+        window = to_reflectance(scene[:, top : top + self.crop, left : left + self.crop])
+        target = label[top : top + self.crop, left : left + self.crop]
+        window, target = _geometric([window, target], rng)
+        gain = rng.uniform(1 - self.gain_jitter, 1 + self.gain_jitter, (window.shape[0], 1, 1))
+        window = window * gain.astype(np.float32)
+        return normalise_scene(window, self.mean, self.std, target != IGNORE), target
+
+    def batch(self, batch_size: int) -> tuple[np.ndarray, np.ndarray]:
+        samples = [self._sample() for _ in range(batch_size)]
+        return np.stack([s[0] for s in samples]), np.stack([s[1] for s in samples])

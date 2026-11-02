@@ -14,6 +14,7 @@ from typing import Any, Iterable
 from xml.sax.saxutils import escape
 
 from app.models import AuditLog, Case
+from app.services.storage import resolve_public_path
 
 try:  # Keep the core web/API install usable when PDF reports are not required.
     from reportlab.lib import colors
@@ -22,6 +23,10 @@ try:  # Keep the core web/API install usable when PDF reports are not required.
     from reportlab.lib.styles import ParagraphStyle, getSampleStyleSheet
     from reportlab.lib.units import mm
     from reportlab.platypus import (
+        Image as PlatypusImage,
+    )
+    from reportlab.platypus import (
+        KeepTogether,
         PageBreak,
         Paragraph,
         SimpleDocTemplate,
@@ -40,7 +45,8 @@ class ReportDependencyUnavailable(RuntimeError):
 
 
 _NOT_RECORDED = "Not recorded"
-_MAX_DISPLAY_CHARS = 4_000
+_MAX_DISPLAY_CHARS = 1_500
+_MAX_AUDIT_ROWS = 60
 
 
 def reportlab_available() -> bool:
@@ -273,10 +279,123 @@ def _analysis_rows(case: Case) -> list[tuple[str, Any]]:
         ("Pixel area", _format_number(analysis.pixel_area_m2, " m²", 4)),
         ("Created", _format_datetime(analysis.created_at)),
         ("Completed", _format_datetime(analysis.completed_at)),
-        ("Evidence path", analysis.evidence_path),
         ("Quality metadata (stored)", _safe_json(analysis.quality_json)),
         ("Result metadata (stored)", _safe_json(analysis.result_json)),
     ]
+
+
+def _loaded(value: str | None, fallback: Any) -> Any:
+    try:
+        return json.loads(value) if value else fallback
+    except (TypeError, ValueError):
+        return fallback
+
+
+def _picture(url: str | None, width: float) -> Any | None:
+    """A flowable for a stored evidence image, scaled to width, or None if it is absent."""
+
+    path = resolve_public_path(url)
+    if path is None:
+        return None
+    from PIL import Image as PILImage
+
+    with PILImage.open(path) as image:
+        pixel_width, pixel_height = image.size
+    return PlatypusImage(str(path), width=width, height=width * pixel_height / pixel_width)
+
+
+def _evidence_story(case: Case, styles: dict[str, ParagraphStyle]) -> list[Any]:
+    images = _loaded(case.images_json, {})
+    panel = _picture(images.get("panel") or case.mask_image, 172 * mm)
+    story: list[Any] = []
+    if panel is None:
+        story.append(_paragraph("Evidence images are not available on this server.", styles["Body"]))
+        return story
+    story.append(panel)
+    story.append(Spacer(1, 2 * mm))
+    story.append(
+        _paragraph(
+            f"Left to right: before ({case.before_date}), after ({case.after_date}), change regions "
+            "coloured by verdict, NDVI change (red is vegetation lost, blue is gained). Before and "
+            "after share one brightness stretch.",
+            styles["BodySmall"],
+        )
+    )
+    reference = _loaded(case.seasonal_reference_json, None)
+    if reference:
+        picture = _picture(reference.get("image"), 80 * mm)
+        if picture is not None:
+            story.extend(
+                [
+                    Spacer(1, 3 * mm),
+                    KeepTogether(
+                        [
+                            picture,
+                            _paragraph(
+                                f"Same-season reference: {reference.get('date')} "
+                                f"({reference.get('product_id')}).",
+                                styles["BodySmall"],
+                            ),
+                        ]
+                    ),
+                ]
+            )
+    return story
+
+
+def _context_rows(case: Case) -> list[tuple[str, Any]]:
+    context = _loaded(case.context_json, {})
+    rain = context.get("rainfall") or {}
+    if rain.get("available"):
+        rainfall = f"{rain.get('total_mm')} mm in the {rain.get('window_days')} days before the scene"
+        if rain.get("normal_mm") is not None:
+            rainfall += f" (same window in prior years averaged {rain.get('normal_mm')} mm)"
+        if rain.get("peak_14d_mm") is not None:
+            rainfall += f"; wettest 14 days since the baseline scene: {rain.get('peak_14d_mm')} mm"
+    else:
+        rainfall = "Unavailable"
+    disasters = [
+        f"{event.get('source')}: {event.get('title')} ({event.get('date') or 'undated'}, "
+        f"{event.get('distance_km')} km away)"
+        for event in context.get("disasters") or []
+    ]
+    names = lambda items: ", ".join(  # noqa: E731
+        str(item.get("name") or "unnamed") for item in items
+    )
+    return [
+        ("Rainfall", rainfall),
+        ("Disaster feeds", "; ".join(disasters) or "No nearby events listed"),
+        ("Protected areas (OpenStreetMap)", names(context.get("protected_areas") or []) or "None mapped"),
+        ("Quarries (OpenStreetMap)", names(context.get("osm_features") or []) or "None mapped"),
+        ("Authorised zones on record", names(context.get("authorised_zones") or []) or "None on record"),
+        (
+            "Sources unavailable",
+            ", ".join(str(item.get("source")) for item in context.get("unavailable") or []) or "None",
+        ),
+    ]
+
+
+def _finding_block(index: int, finding: Any, styles: dict[str, ParagraphStyle]) -> list[Any]:
+    indices = _loaded(finding.indices_json, {})
+    persists = {True: "Yes", False: "No", None: "Not tested"}[finding.seasonal_persists]
+    rows = [
+        ("Category and verdict", f"{finding.category} / {finding.verdict}"),
+        ("Land cover", f"{finding.transition_from} to {finding.transition_to}"),
+        ("Area", _format_number(finding.area_m2, " m²", 0)),
+        ("Centre (lat, lon)", f"{finding.centroid_lat}, {finding.centroid_lon}"),
+        ("Evidence score", _format_number(finding.confidence, digits=2)),
+        ("Differs from same-season reference", persists),
+        (
+            "Index changes",
+            ", ".join(f"{key.removesuffix('_delta').upper()} {value:+.2f}" for key, value in indices.items()),
+        ),
+    ]
+    reasons = _loaded(finding.verdict_reasons_json, [])
+    block: list[Any] = [Paragraph(escape(f"Finding {index}"), styles["Label"]), _key_value_table(rows, styles)]
+    for reason in reasons:
+        block.append(_paragraph(f"- {reason}", styles["BodySmall"]))
+    block.append(Spacer(1, 3 * mm))
+    return block
 
 
 def _area_rows(case: Case) -> list[tuple[str, Any]]:
@@ -286,9 +405,9 @@ def _area_rows(case: Case) -> list[tuple[str, Any]]:
     return [
         ("Monitoring area ID", area.id),
         ("Monitoring area name", area.name),
+        ("State and district", f"{area.state or _NOT_RECORDED}, {area.district or _NOT_RECORDED}"),
         ("Area status", area.status),
         ("Centre (latitude, longitude)", f"{area.center_lat:.6f}, {area.center_lon:.6f}"),
-        ("Configured cloud cap", _format_number(area.max_cloud_cover, "%")),
         ("Configured minimum change area", _format_number(area.min_change_area_m2, " m²")),
         ("Sensitivity", area.sensitivity),
         ("Monitoring interval", _format_number(area.monitoring_interval_minutes, " minutes", 0)),
@@ -343,6 +462,10 @@ def build_case_investigation_report(case: Case, audit_events: Iterable[AuditLog]
                 ("Case ID", case.id),
                 ("Title", case.title),
                 ("Current status", case.status),
+                (
+                    "Origin",
+                    "Archive replay of past imagery" if case.origin == "archive_replay" else "Live monitoring",
+                ),
                 ("Created", _format_datetime(case.created_at)),
                 ("Location label", case.location),
                 ("Highest recorded severity", case.highest_severity),
@@ -373,13 +496,16 @@ def build_case_investigation_report(case: Case, audit_events: Iterable[AuditLog]
                 ("Analysis ID", case.analysis_id),
                 ("Before acquisition ID", case.before_acquisition_id),
                 ("After acquisition ID", case.after_acquisition_id),
-                ("Before image reference", case.before_image),
-                ("After image reference", case.after_image),
-                ("Change-evidence reference", case.mask_image),
             ],
             styles,
         )
     )
+
+    story.extend(_section_heading("Evidence imagery", styles))
+    story.extend(_evidence_story(case, styles))
+
+    story.extend(_section_heading("Context at the time of the scene", styles))
+    story.append(_key_value_table(_context_rows(case), styles))
 
     story.extend(_section_heading("3. Linked monitoring area", styles))
     story.append(_key_value_table(_area_rows(case), styles))
@@ -390,56 +516,8 @@ def build_case_investigation_report(case: Case, audit_events: Iterable[AuditLog]
     story.extend(_section_heading("5. Detected change regions", styles))
     findings = list(case.findings)
     if findings:
-        finding_rows = []
-        for finding in findings:
-            ndvi = (
-                f"before: {_format_number(finding.ndvi_before, digits=4)}<br/>"
-                f"after: {_format_number(finding.ndvi_after, digits=4)}<br/>"
-                f"delta: {_format_number(finding.ndvi_delta, digits=4)}"
-            )
-            finding_rows.append(
-                [
-                    finding.id,
-                    f"{finding.activity}<br/>{_as_text(finding.category)}",
-                    _format_percent(finding.confidence),
-                    finding.severity,
-                    f"{_format_number(finding.area_m2, ' m²')}<br/>{_format_number(finding.area_pixels)} px",
-                    f"{finding.centroid_y:.5f}, {finding.centroid_x:.5f}",
-                    ndvi,
-                    "Yes" if finding.requires_human_verification else "No",
-                ]
-            )
-        story.append(
-            _data_table(
-                [
-                    "Finding ID",
-                    "Activity / category",
-                    "Confidence",
-                    "Severity",
-                    "Area",
-                    "Centroid (y, x)",
-                    "NDVI evidence",
-                    "Human check",
-                ],
-                finding_rows,
-                [22 * mm, 28 * mm, 16 * mm, 15 * mm, 23 * mm, 22 * mm, 24 * mm, 18 * mm],
-                styles,
-            )
-        )
         for index, finding in enumerate(findings, start=1):
-            story.extend(_section_heading(f"Finding {index} stored evidence", styles))
-            story.append(
-                _key_value_table(
-                    [
-                        ("Finding ID", finding.id),
-                        ("Bounding box (stored)", finding.bbox),
-                        ("Region geometry (stored)", finding.geometry_json),
-                        ("Persistence score", _format_number(finding.persistence_score, digits=4)),
-                        ("Evidence metadata (stored)", _safe_json(finding.evidence_json)),
-                    ],
-                    styles,
-                )
-            )
+            story.extend(_finding_block(index, finding, styles))
     else:
         story.append(_paragraph("No stored change-region findings are associated with this case.", styles["Body"]))
 
@@ -454,13 +532,13 @@ def build_case_investigation_report(case: Case, audit_events: Iterable[AuditLog]
                 alert.status,
                 _format_datetime(alert.created_at),
                 alert.message,
-                alert.acknowledgement_note,
+                alert.status_note or alert.acknowledgement_note,
             ]
             for alert in alerts
         ]
         story.append(
             _data_table(
-                ["Alert ID", "Title", "Severity", "Status", "Created", "Message", "Acknowledgement"],
+                ["Alert ID", "Title", "Severity", "Status", "Created", "Message", "Status note"],
                 alert_rows,
                 [20 * mm, 26 * mm, 14 * mm, 15 * mm, 23 * mm, 35 * mm, 29 * mm],
                 styles,
@@ -489,7 +567,7 @@ def build_case_investigation_report(case: Case, audit_events: Iterable[AuditLog]
 
     story.append(PageBreak())
     story.extend(_section_heading("8. Relevant audit events", styles))
-    events = list(audit_events)
+    events = list(audit_events)[:_MAX_AUDIT_ROWS]
     if events:
         event_rows = [
             [
@@ -498,7 +576,7 @@ def build_case_investigation_report(case: Case, audit_events: Iterable[AuditLog]
                 event.entity_id,
                 event.event_type,
                 _format_datetime(event.created_at),
-                _safe_json(event.payload_json),
+                _safe_json(event.payload_json)[:300],
             ]
             for event in events
         ]
@@ -516,7 +594,7 @@ def build_case_investigation_report(case: Case, audit_events: Iterable[AuditLog]
     story.extend(_section_heading("9. Interpretation boundaries", styles))
     story.append(
         _paragraph(
-            "Confidence values and categories describe the system's recorded analytical output for the "
+            "Evidence scores and categories describe the system's recorded analytical output for the "
             "selected image pair. They are not legal conclusions or independently validated accuracy "
             "claims. Review source imagery, data quality, acquisition conditions, and the stored evidence "
             "before acting on this lead.",

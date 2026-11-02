@@ -1,0 +1,19 @@
+services:
+  - type: web
+    name: sentinelwatch
+    runtime: docker
+    plan: standard
+    healthCheckPath: /api/health
+    envVars:
+      - key: SENTINELWATCH_ADMIN_PASSWORD
+        generateValue: true
+      - key: DATABASE_URL
+        value: sqlite:////var/data/instance/sentinelwatch.db
+      - key: STORAGE_DIR
+        value: /var/data/storage
+      - key: LOG_DIR
+        value: /var/data/logs
+    disk:
+      name: sentinelwatch-data
+      mountPath: /var/data
+      sizeGB: 5

@@ -1,47 +1,182 @@
 erDiagram
-  MonitoringArea ||--o{ AOIAcquisition : links
-  SatelliteAcquisition ||--o{ AOIAcquisition : links
-  MonitoringArea ||--o{ MonitoringRun : schedules
-  MonitoringArea ||--o{ AnalysisRecord : analyses
-  AnalysisRecord ||--o{ Case : creates
-  Case ||--o{ Finding : contains
-  Case ||--o{ Alert : contains
-  Case ||--o{ CaseReview : receives
-  Department ||--o{ Alert : assigned_to
-  Alert ||--o{ NotificationAttempt : records
-  MonitoringArea ||--o{ PriorityCandidate : approved_from
+  %% Fields are selected actual columns, not an exhaustive schema.
+  %% Optional one-to-one edges express ORM intent; run_id and analysis_id are not UNIQUE.
+  %% AOIAcquisition.case_id and Alert.aoi_id are strings, not foreign keys.
+  %% AuthorisedZone and AuditLog have no relational links to findings/entities.
+  MonitoringArea ||--o{ AOIAcquisition : aoi_id
+  SatelliteAcquisition ||--o{ AOIAcquisition : acquisition_id
+  MonitoringArea ||--o{ MonitoringRun : aoi_id
+  SatelliteAcquisition o|--o{ MonitoringRun : before_acquisition_id
+  SatelliteAcquisition o|--o{ MonitoringRun : after_acquisition_id
+  MonitoringArea ||--o{ AnalysisRecord : aoi_id
+  MonitoringRun o|--o| AnalysisRecord : run_id_ORM_intent
+  SatelliteAcquisition ||--o{ AnalysisRecord : before_acquisition_id
+  SatelliteAcquisition ||--o{ AnalysisRecord : after_acquisition_id
+  ModelVersion o|--o{ AnalysisRecord : model_version_id
+  MonitoringArea o|--o{ Case : aoi_id
+  AnalysisRecord o|--o| Case : analysis_id_ORM_intent
+  SatelliteAcquisition o|--o{ Case : before_acquisition_id
+  SatelliteAcquisition o|--o{ Case : after_acquisition_id
+  Case ||--o{ Finding : case_id
+  Case ||--o{ Alert : case_id
+  Finding o|--o{ Alert : finding_id
+  Department o|--o{ Alert : department_id
+  Case ||--o{ CaseReview : case_id
+  Alert ||--o{ NotificationAttempt : alert_id
+  Department o|--o{ NotificationAttempt : department_id
+  MonitoringArea o|--o{ CatalogueRefresh : aoi_id
+  MonitoringArea o|--o{ PriorityCandidate : monitoring_area_id
   MonitoringArea {
     string id PK
     string name
-    json geometry
-    boolean is_active
+    string geometry_json
+    string categories_json
+    string status
+    int monitoring_interval_minutes
+    datetime next_check_at
   }
   SatelliteAcquisition {
     string id PK
-    string provider_product_id
-    datetime acquired_at
-    float cloud_cover
+    string product_id UK
+    string scene_key
+    string provider
+    datetime acquisition_datetime
+    string asset_metadata_json
+  }
+  AOIAcquisition {
+    string id PK
+    string aoi_id FK
+    string acquisition_id FK
+    float aoi_clear_fraction
+    string scene_status
+    string case_id
+  }
+  MonitoringRun {
+    string id PK
+    string aoi_id FK
+    string before_acquisition_id FK
+    string after_acquisition_id FK
+    string status
+    string stage
+    int progress_percent
+    string origin
+    string replay_id
+    string as_of_date
+  }
+  ModelVersion {
+    string id PK
+    string name UK
+    string checkpoint_path
+    string status
+    string metrics_json
   }
   AnalysisRecord {
     string id PK
-    string method
-    string status
-    datetime created_at
+    string run_id FK
+    string aoi_id FK
+    string before_acquisition_id FK
+    string after_acquisition_id FK
+    string model_version_id FK
+    string analysis_method
+    float pixel_area_m2
+    string quality_json
+    string result_json
   }
   Case {
     string id PK
+    string aoi_id FK
+    string analysis_id FK
+    string before_acquisition_id FK
+    string after_acquisition_id FK
     string status
-    string title
+    string origin
+    string images_json
+    string seasonal_reference_json
+    string context_json
   }
   Finding {
     string id PK
-    string change_type
-    float confidence
+    string case_id FK
+    string category
+    string verdict
+    string verdict_reasons_json
+    string transition_from
+    string transition_to
+    string indices_json
+    boolean seasonal_persists
+    string geometry_json
     float area_m2
   }
   Alert {
     string id PK
-    string severity
-    float priority_score
+    string case_id FK
+    string finding_id FK
+    string department_id FK
+    string aoi_id
     string status
+    string category
+    string verdict
+    string origin
+    string replay_id
+    float priority_score
+    datetime dispatched_at
+  }
+  Department {
+    string id PK
+    string name UK
+    string state
+    string category
+    string recipient_email
+    boolean active
+  }
+  NotificationAttempt {
+    string id PK
+    string alert_id FK
+    string department_id FK
+    string channel
+    string status
+    int attempts
+    string file_path
+    datetime created_at
+  }
+  CaseReview {
+    string id PK
+    string case_id FK
+    string action
+    string note
+    string reviewer
+  }
+  AuditLog {
+    string id PK
+    string entity_type
+    string entity_id
+    string event_type
+    string payload_json
+  }
+  CatalogueRefresh {
+    string id PK
+    string aoi_id FK
+    string provider
+    string status
+    int result_count
+    string query_json
+  }
+  PriorityCandidate {
+    string id PK
+    string monitoring_area_id FK
+    string region_name
+    string discovery_method
+    float score
+    string status
+  }
+  AuthorisedZone {
+    string id PK
+    string name
+    string zone_type
+    string geometry_json
+    string valid_from
+    string valid_to
+    string reference
+    string source
+    boolean is_illustrative
   }

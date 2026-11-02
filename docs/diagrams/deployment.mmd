@@ -1,12 +1,22 @@
 flowchart TB
-  B[User browser\nLeaflet CDN + OpenStreetMap] --> H[Host machine / container]
-  subgraph H[Host machine / Docker container]
-    A[Uvicorn + FastAPI]
-    S[(SQLite file\ninstance/sentinelwatch.db)]
-    F[storage/ previews and reports]
-    A <--> S
-    A <--> F
+  B[Browser: vendored Leaflet, fonts and JavaScript] <-->|HTTP JSON, files and SSE| APP
+  B --> BASE[Online map tiles and optional place search]
+  subgraph HOST[Local host or proposed container: Docker unverified here]
+    APP[One Uvicorn process with FastAPI]
+    WORK[In-process scheduler, worker threads and event bus]
+    DB[(instance: SQLite database)]
+    FILE[(storage: imagery cache, context, evidence and outbox)]
+    MOD[(models: checkpoints and registry; reports/ml artifacts)]
+    APP <--> WORK
+    APP <--> DB
+    WORK <--> DB
+    WORK <--> FILE
+    APP --> FILE
+    APP --> MOD
+    WORK --> MOD
   end
-  A --> C[Internet: CDSE STAC]
-  A -. only configured .-> P[Internet: CDSE Process API]
-  A -. only configured .-> M[SMTP server]
+  WORK --> ES[Earth Search STAC and COGs]
+  WORK --> PC[Planetary Computer STAC and signed COG URLs]
+  WORK -. configured fallback .-> CDSE[CDSE OAuth and processing]
+  WORK --> CTX[Open-Meteo, EONET, GDACS, Overpass and DEM]
+  WORK -. configured email .-> SMTP[SMTP server]

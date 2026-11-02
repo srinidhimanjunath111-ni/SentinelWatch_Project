@@ -1,0 +1,236 @@
+[
+  {
+    "key": "jewar-airport",
+    "name": "Noida International Airport, Jewar",
+    "state": "Uttar Pradesh",
+    "district": "Gautam Buddha Nagar",
+    "site_type": "infrastructure",
+    "categories": [
+      "CONSTRUCTION",
+      "URBANISATION",
+      "OTHER_CHANGE"
+    ],
+    "description": "Airport runway and terminal construction replacing agricultural fields; public environmental clearance on record. Registered platform boundary is approximate.",
+    "bbox": [
+      77.585,
+      28.145,
+      77.635,
+      28.195
+    ],
+    "interval": 720,
+    "sources": [
+      {
+        "title": "MoEFCC environmental clearance, 9 March 2020",
+        "url": "https://media.niairport.in/-/jssmedia/dxn/portal/documents/environment-clearance-compliance/environment-clearance-approval.pdf"
+      }
+    ],
+    "replay": {
+      "start_date": "2021-03-20",
+      "end_date": "2025-03-24",
+      "note": "Compares March 2021 with March 2025, across years of construction. The registered zone outline is approximate, and nearby fields also change with crops."
+    }
+  },
+  {
+    "key": "navi-mumbai-airport",
+    "name": "Navi Mumbai International Airport, Ulwe",
+    "state": "Maharashtra",
+    "district": "Raigad",
+    "site_type": "infrastructure",
+    "categories": [
+      "CONSTRUCTION",
+      "URBANISATION",
+      "WATER_CHANGE",
+      "OTHER_CHANGE"
+    ],
+    "description": "Runway and terminal built on an already graded airport platform between 2021 and 2025. Public EC/CRZ records exist; the registered platform outline is illustrative.",
+    "bbox": [
+      73.045,
+      18.965,
+      73.095,
+      19.015
+    ],
+    "interval": 720,
+    "sources": [
+      {
+        "title": "NMIA Environmental & CRZ compliance report, April–September 2025",
+        "url": "https://navimumbai.adaniairports.com/-/media/Images/AdaniAirNaviMumbaiAirport/Reports/Environmental-Compliances/Half-Yearly-Environment--CRZ-Compliance-Reports/NMIAL--Half_Yearly_Compliance-Report-April-2025--Sept-2025.pdf"
+      },
+      {
+        "title": "PIB: Environmental clearance accorded, 22 November 2010",
+        "url": "https://www.pib.gov.in/newsite/PrintRelease.aspx?lang=2&reg=48&relid=67416"
+      }
+    ],
+    "replay": {
+      "start_date": "2021-01-27",
+      "end_date": "2025-01-06",
+      "note": "Compares January 2021 with January 2025. This shows building on prepared land, not the earlier hill removal or mangrove reclamation. The registered zone outline is approximate."
+    }
+  },
+  {
+    "key": "pekb-hasdeo-arand",
+    "name": "Parsa East Kete Basan mine, Hasdeo Arand",
+    "state": "Chhattisgarh",
+    "district": "Surguja",
+    "site_type": "mining",
+    "categories": [
+      "MINING",
+      "DEFORESTATION",
+      "OTHER_CHANGE"
+    ],
+    "description": "Open-cast mine with visible bench advance and changing bare ground. Phase-II authorisation is documented; clearance and environmental concerns have been contested. Approximate mine footprint only.",
+    "bbox": [
+      82.79,
+      22.805,
+      82.845,
+      22.855
+    ],
+    "interval": 1440,
+    "sources": [
+      {
+        "title": "Supreme Court order, CA 4395/2014, 16 October 2023 (Indian Kanoon transcript)",
+        "url": "https://indiankanoon.org/doc/46195082/"
+      },
+      {
+        "title": "NGT e-Journal 2025, pp.32–36, OA 59/2024 and connected matters",
+        "url": "https://www.greentribunal.gov.in/sites/default/files/e-Journal_2025.pdf"
+      }
+    ],
+    "replay": {
+      "start_date": "2021-02-24",
+      "end_date": "2025-03-25",
+      "note": "Compares February 2021 with March 2025. The registered outline is approximate and smaller than the full lease, and the clearance has been contested in court."
+    }
+  },
+  {
+    "key": "rawa-nangal-quarries",
+    "name": "Rawa–Nangal border ridge quarries",
+    "state": "Haryana / Rajasthan",
+    "district": "Nuh / Deeg",
+    "site_type": "mining",
+    "categories": [
+      "MINING",
+      "DEFORESTATION",
+      "OTHER_CHANGE"
+    ],
+    "description": "Quarrying on the Rawa–Nangal border ridge. Public NGT filings discuss reported unauthorised workings and nearby Rajasthan leases. No authorisation on record in this system's registry; this is not evidence that every quarry lacks a permit.",
+    "bbox": [
+      77.01,
+      27.775,
+      77.065,
+      27.825
+    ],
+    "interval": 1440,
+    "sources": [
+      {
+        "title": "Rajasthan respondent reply in NGT OA 06/2025, incident-site coordinates",
+        "url": "https://www.greentribunal.gov.in/sites/default/files/news_updates/Short%20Reply%20on%20behalf%20of%20R-%206%20in%20OA%20No%2006%20of%202025%20%28In%20re%20News%20item%20appearing%20in%20The%20Tribune%20dated%2012.12.2024%20titled%20Mining%20Mafia%20brings%20down%20another%20Aravalli%29.pdf"
+      },
+      {
+        "title": "Haryana respondent reply in NGT OA 06/2025",
+        "url": "https://www.greentribunal.gov.in/sites/default/files/news_updates/Reply%20by%20R-1%20in%20OA%20No.%2006%20of%202025%20%28In%20re%20News%20item%20appearing%20in%20The%20Tribune%20dated%2012.12.2024%20titled%20Mining%20Mafia%20brings%20down%20another%20Aravalli%29.pdf"
+      }
+    ],
+    "replay": {
+      "start_date": "2021-03-05",
+      "end_date": "2025-03-24",
+      "note": "Compares March 2021 with March 2025. The area crosses a state boundary and permits exist nearby, so imagery alone cannot tie an individual cut to a state or lease."
+    }
+  },
+  {
+    "key": "wayanad-debris-flow",
+    "name": "Mundakkai–Chooralmala debris-flow corridor, Wayanad",
+    "state": "Kerala",
+    "district": "Wayanad",
+    "site_type": "disaster",
+    "categories": [
+      "LANDSLIDE",
+      "FLOOD",
+      "OTHER_CHANGE"
+    ],
+    "description": "Visible widening and deposition along the 30 July 2024 debris-flow corridor. The monitored area includes the source area and part of the runout, not the entire approximately 8 km path.",
+    "bbox": [
+      76.115,
+      11.45,
+      76.165,
+      11.5
+    ],
+    "interval": 1440,
+    "sources": [
+      {
+        "title": "Yunus et al., Documenting the Wayanad landslide",
+        "url": "https://nora.nerc.ac.uk/id/eprint/539430/1/Documenting_Wayanad_LASL_R1.pdf"
+      },
+      {
+        "title": "Eos Landslide Blog, 6 August 2024",
+        "url": "https://eos.org/thelandslideblog/wayanad-landslides"
+      }
+    ],
+    "replay": {
+      "start_date": "2024-02-05",
+      "end_date": "2024-12-16",
+      "note": "Compares 5 February and 16 December 2024. Cloud delayed the later image by months after the 30 July 2024 debris flow. The area covers part of the roughly 8 km runout."
+    }
+  },
+  {
+    "key": "kanha-seasonal",
+    "name": "Kanha forest–meadow seasonal reference",
+    "state": "Madhya Pradesh",
+    "district": "Mandla",
+    "site_type": "forest",
+    "categories": [
+      "SEASONAL_VEGETATION",
+      "OTHER_CHANGE"
+    ],
+    "description": "Forest–meadow mosaic showing dry-season canopy browning and post-monsoon greening. Same-season April 2023 and April 2024 imagery retain the same wooded margins; intended no-alert reference.",
+    "bbox": [
+      80.59,
+      22.265,
+      80.64,
+      22.315
+    ],
+    "interval": 1440,
+    "sources": [
+      {
+        "title": "Madhya Pradesh Tourism: Kanha National Park, seasonal vegetation guidance",
+        "url": "https://www.mptourism.com/destination-kanha-national-park.php"
+      }
+    ],
+    "replay": {
+      "start_date": "2023-11-09",
+      "end_date": "2024-04-17",
+      "note": "Compares November 2023 with April 2024, using an April 2023 reference, to separate dry-season browning from lasting change."
+    }
+  },
+  {
+    "key": "delhi-yamuna-floodplain",
+    "name": "Yamuna floodplain near Shastri Park, Delhi",
+    "state": "Delhi",
+    "district": "North / Central / North East Delhi",
+    "site_type": "disaster",
+    "categories": [
+      "FLOOD",
+      "WATER_CHANGE",
+      "OTHER_CHANGE"
+    ],
+    "description": "Yamuna flooding during the documented July 2023 event; water spread is visible in clear portions of a partly cloudy 13 July scene. Cloud-limited replay: this site allows tile cloud up to 85 percent to reach that scene.",
+    "bbox": [
+      77.2,
+      28.65,
+      77.25,
+      28.7
+    ],
+    "interval": 1440,
+    "sources": [
+      {
+        "title": "NRSC Delhi flood report, 13 July 2023, Ref.2023/FL/DL/04",
+        "url": "https://ndem.nrsc.gov.in/documents/Disaster_Document/2023/DL/dlflood50dsc13072023_0600hrs/dlflood50dsc13072023_0600hrs_report.pdf"
+      }
+    ],
+    "replay": {
+      "start_date": "2023-06-08",
+      "end_date": "2023-07-13",
+      "note": "Compares 8 June and 13 July 2023, around the documented 12-13 July flood. Cloud covers part of the later image, so about 80% of the area could be analysed."
+    },
+    "max_cloud_cover": 85
+  }
+]

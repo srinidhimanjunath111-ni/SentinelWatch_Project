@@ -1,0 +1,293 @@
+{
+  "generated_at": "2026-11-01T21:49:42.796042Z",
+  "models": [
+    {
+      "key": "change",
+      "name": "SentinelWatch change detector",
+      "version": "v2",
+      "architecture": "Siamese U-Net, shared encoder, absolute-difference fusion, base 32 channels",
+      "parameters": 3129825,
+      "status": "READY",
+      "checkpoint": "models/checkpoints/change_siamese.pt",
+      "checkpoint_sha256": "f5f5b9d77336044d8426defe450e81d81606da3d533d0cb7cd354ed53cdff9fd",
+      "checkpoint_bytes": 12565965,
+      "input_bands": [
+        "B02",
+        "B03",
+        "B04",
+        "B08",
+        "B11",
+        "B12"
+      ],
+      "normalisation": "date_band_median_iqr_v1",
+      "align_dates": true,
+      "temperature": 1.1500000000000006,
+      "trained_at": "2026-11-01T21:47:27.119545+00:00",
+      "device": "mps",
+      "epochs": 18,
+      "steps": 2500,
+      "training_seconds": 1036.866034999999,
+      "threshold": 0.47827455747013037,
+      "datasets": [
+        {
+          "name": "Onera Satellite Change Detection (OSCD)",
+          "url": "https://rcdaudt.github.io/oscd/",
+          "licence": "Change maps CC BY-NC-SA 4.0 (academic use); imagery Copernicus Sentinel-2 open data",
+          "role": "train",
+          "samples": 14
+        },
+        {
+          "name": "India forest change: Sentinel-2 L2A pairs labelled from Hansen Global Forest Change",
+          "url": "https://glad.earthengine.app/view/global-forest-change",
+          "licence": "Labels CC BY 4.0 (Hansen/UMD/Google/USGS/NASA); imagery Copernicus Sentinel-2 open data",
+          "role": "train",
+          "samples": 262
+        },
+        {
+          "name": "India forest change: Sentinel-2 L2A pairs labelled from Hansen Global Forest Change",
+          "url": "https://glad.earthengine.app/view/global-forest-change",
+          "licence": "Labels CC BY 4.0 (Hansen/UMD/Google/USGS/NASA); imagery Copernicus Sentinel-2 open data",
+          "role": "val",
+          "samples": 54
+        },
+        {
+          "name": "Onera Satellite Change Detection (OSCD)",
+          "url": "https://rcdaudt.github.io/oscd/",
+          "licence": "Change maps CC BY-NC-SA 4.0 (academic use); imagery Copernicus Sentinel-2 open data",
+          "role": "val",
+          "samples": 14
+        },
+        {
+          "name": "India forest change: Sentinel-2 L2A pairs labelled from Hansen Global Forest Change",
+          "url": "https://glad.earthengine.app/view/global-forest-change",
+          "licence": "Labels CC BY 4.0 (Hansen/UMD/Google/USGS/NASA); imagery Copernicus Sentinel-2 open data",
+          "role": "test",
+          "samples": 100
+        },
+        {
+          "name": "Onera Satellite Change Detection (OSCD)",
+          "url": "https://rcdaudt.github.io/oscd/",
+          "licence": "Change maps CC BY-NC-SA 4.0 (academic use); imagery Copernicus Sentinel-2 open data",
+          "role": "test",
+          "samples": 10
+        }
+      ],
+      "metrics": {
+        "split": "test",
+        "f1": 0.46079418344519013,
+        "iou": 0.29937138912103484,
+        "precision": 0.41472868217054265,
+        "recall": 0.5183717125959482,
+        "accuracy": 0.9372113462438337,
+        "per_dataset": {
+          "india_forest_test": {
+            "f1": 0.5157228579860315,
+            "iou": 0.3474572526841338,
+            "precision": 0.5352208534676377,
+            "recall": 0.49759554543153633,
+            "accuracy": 0.9845104639582231
+          },
+          "oscd_test": {
+            "f1": 0.46079418344519013,
+            "iou": 0.29937138912103484,
+            "precision": 0.41472868217054265,
+            "recall": 0.5183717125959482,
+            "accuracy": 0.9372113462438337
+          },
+          "india_forest_test__v1": {
+            "f1": 0.10053532046362056,
+            "iou": 0.05292823896475884,
+            "precision": 0.21650347309398277,
+            "recall": 0.06546798091887994,
+            "accuracy": 0.9806022376537551
+          },
+          "oscd_test__v1": {
+            "f1": 0.24751692470404674,
+            "iou": 0.14123784029255002,
+            "precision": 0.7406003258553704,
+            "recall": 0.14858841944467144,
+            "accuracy": 0.9533066964355335
+          },
+          "india_forest_test__v2": {
+            "f1": 0.5157228579860315,
+            "iou": 0.3474572526841338,
+            "precision": 0.5352208534676377,
+            "recall": 0.49759554543153633,
+            "accuracy": 0.9845104639582231
+          },
+          "oscd_test__v2": {
+            "f1": 0.46079418344519013,
+            "iou": 0.29937138912103484,
+            "precision": 0.41472868217054265,
+            "recall": 0.5183717125959482,
+            "accuracy": 0.9372113462438337
+          }
+        }
+      },
+      "artifacts": {
+        "learning_curve": "reports/ml/change_v2_training_curve.png",
+        "confusion_matrix": "reports/ml/change_v2_oscd_test_confusion.png",
+        "samples": "reports/ml/change_v2_oscd_test_samples.png"
+      },
+      "limitations": [
+        "OSCD is urban and mostly outside India (one Indian city, Mumbai), so urban results do not transfer automatically to Indian forest, mining or rural change.",
+        "OSCD imagery is Sentinel-2 L1C while live imagery is L2A. Per-pair per-band normalisation reduces this shift but does not remove it, and no OSCD-style pixel labels exist on L2A to measure the residual.",
+        "OSCD has 24 pairs. The test set is 10 cities and validation is only 2, so metrics and the tuned threshold carry real sampling uncertainty.",
+        "The model reports physical change only. It cannot determine cause or legality.",
+        "Performance varies widely between places. On validation cities the best threshold differed by city, so one global threshold over-calls in some scenes and under-calls in others.",
+        "India forest labels come from Hansen Global Forest Change at 30 m and are annual, so they are coarse relative to 10 m pixels, and the loss edge is uncertain by several pixels.",
+        "Hansen records loss of tree cover only. Pixels outside forest (treecover2000 under 30) are ignored, so India forest metrics say nothing about false alarms on non-forest land.",
+        "Per-date normalisation cancels scene-wide radiometric shifts, so a change covering most of an AOI, such as a flood filling the whole window, can be suppressed. Use a wide AOI for such events.",
+        "Selected v2. Against v1, v2 changed OSCD test F1 by +0.213 (0.248 to 0.461) and India forest test F1 by +0.415 (0.101 to 0.516). v1's OSCD test result was seen before v2 was designed, so v2 is not a fully blind result. v2's configuration, threshold and temperature were chosen on validation data only, and v2 was evaluated once on each test set. This comparison then uses test results to choose between the two models, which makes the winner's score slightly optimistic."
+      ],
+      "selection": {
+        "selected": "v2",
+        "criteria": "Keep v2 only if OSCD test F1 does not fall more than 0.02 below v1 and India forest test F1 is higher than v1.",
+        "decision": "Selected v2. Against v1, v2 changed OSCD test F1 by +0.213 (0.248 to 0.461) and India forest test F1 by +0.415 (0.101 to 0.516). v1's OSCD test result was seen before v2 was designed, so v2 is not a fully blind result. v2's configuration, threshold and temperature were chosen on validation data only, and v2 was evaluated once on each test set. This comparison then uses test results to choose between the two models, which makes the winner's score slightly optimistic."
+      }
+    },
+    {
+      "key": "landcover",
+      "name": "SentinelWatch land-cover classifier",
+      "version": "v1",
+      "architecture": "U-Net, base 32 channels, 8 classes",
+      "parameters": 3130056,
+      "status": "READY",
+      "checkpoint": "models/checkpoints/landcover_unet.pt",
+      "checkpoint_sha256": "3d317266ef39be57a3e509f9bb1a7c4faf8c61a2ca1e7dec7f2637a4b857fbda",
+      "checkpoint_bytes": 12561093,
+      "input_bands": [
+        "B02",
+        "B03",
+        "B04",
+        "B08",
+        "B11",
+        "B12"
+      ],
+      "normalisation": "fixed per-band standardisation from the training set",
+      "classes": [
+        "tree",
+        "shrub_grass",
+        "crop",
+        "built",
+        "bare",
+        "water",
+        "wetland",
+        "mine"
+      ],
+      "trained_at": "2026-11-01T20:01:29.571368+00:00",
+      "device": "mps",
+      "epochs": 59,
+      "training_seconds": 1810.8130654159977,
+      "threshold": null,
+      "datasets": [
+        {
+          "name": "India land cover: Sentinel-2 L2A 2021, ESA WorldCover 2021 v200, Maus et al. 2022 mining polygons",
+          "url": "https://esa-worldcover.org/ ; https://doi.org/10.1594/PANGAEA.942325",
+          "licence": "WorldCover CC BY 4.0; mining polygons CC BY-SA 4.0; imagery Copernicus Sentinel-2 open data",
+          "role": "train",
+          "samples": 580
+        },
+        {
+          "name": "India land cover: Sentinel-2 L2A 2021, ESA WorldCover 2021 v200, Maus et al. 2022 mining polygons",
+          "url": "https://esa-worldcover.org/ ; https://doi.org/10.1594/PANGAEA.942325",
+          "licence": "WorldCover CC BY 4.0; mining polygons CC BY-SA 4.0; imagery Copernicus Sentinel-2 open data",
+          "role": "val",
+          "samples": 124
+        },
+        {
+          "name": "India land cover: Sentinel-2 L2A 2021, ESA WorldCover 2021 v200, Maus et al. 2022 mining polygons",
+          "url": "https://esa-worldcover.org/ ; https://doi.org/10.1594/PANGAEA.942325",
+          "licence": "WorldCover CC BY 4.0; mining polygons CC BY-SA 4.0; imagery Copernicus Sentinel-2 open data",
+          "role": "test",
+          "samples": 118
+        }
+      ],
+      "metrics": {
+        "split": "test",
+        "f1": 0.5264485881960612,
+        "iou": 0.37295083747628066,
+        "accuracy": 0.5602063767388921,
+        "macro_f1": 0.5264485881960612,
+        "macro_iou": 0.37295083747628066,
+        "per_class": {
+          "tree": {
+            "f1": 0.6612404014212424,
+            "iou": 0.4939201945765488,
+            "precision": 0.7083523300266612,
+            "recall": 0.6200044194051195,
+            "support_pixels": 1678959
+          },
+          "shrub_grass": {
+            "f1": 0.284122391034149,
+            "iou": 0.16558429899052518,
+            "precision": 0.3367116532821397,
+            "recall": 0.2457413178422864,
+            "support_pixels": 1426028
+          },
+          "crop": {
+            "f1": 0.5921557506130986,
+            "iou": 0.4206116911518977,
+            "precision": 0.5414954663416972,
+            "recall": 0.6532735754040451,
+            "support_pixels": 2231001
+          },
+          "built": {
+            "f1": 0.6240743919885551,
+            "iou": 0.4535669576573242,
+            "precision": 0.5315730725924771,
+            "recall": 0.7555510908196562,
+            "support_pixels": 288682
+          },
+          "bare": {
+            "f1": 0.5256865509180778,
+            "iou": 0.3565636271211058,
+            "precision": 0.4890590469075855,
+            "recall": 0.568244561194548,
+            "support_pixels": 414751
+          },
+          "water": {
+            "f1": 0.6497909364204483,
+            "iou": 0.4812520919521763,
+            "precision": 0.5645529619822146,
+            "recall": 0.7653451432951497,
+            "support_pixels": 234830
+          },
+          "wetland": {
+            "f1": 0.21570442808164683,
+            "iou": 0.12089052479670512,
+            "precision": 0.24247894103489773,
+            "recall": 0.194254820218864,
+            "support_pixels": 153520
+          },
+          "mine": {
+            "f1": 0.6588138550912722,
+            "iou": 0.49121731356396225,
+            "precision": 0.689609437564383,
+            "recall": 0.6306511468305284,
+            "support_pixels": 1258948
+          }
+        },
+        "per_dataset": {
+          "india_landcover_test": {
+            "f1": 0.5264485881960612,
+            "iou": 0.37295083747628066,
+            "accuracy": 0.5602063767388921
+          }
+        }
+      },
+      "artifacts": {
+        "learning_curve": "reports/ml/landcover_v1_training_curve.png",
+        "confusion_matrix": "reports/ml/landcover_v1_test_confusion.png",
+        "samples": "reports/ml/landcover_v1_test_samples.png"
+      },
+      "limitations": [
+        "Reference labels are ESA WorldCover 2021, itself a model output with its own errors (around 75 percent reported global accuracy), so scores measure agreement with WorldCover rather than ground truth.",
+        "The mine class comes from Maus et al. 2022 polygons digitised on a 2019 mosaic. They include tailings, ponds and plant, and omit mines opened or unmapped since, so unmapped mines are labelled as other classes during training and scoring.",
+        "A mine class from polygons cannot determine legality or current activity. It marks a mining-related footprint.",
+        "Trained on 2021 India L2A scenes from dry and post-monsoon dates. Monsoon-season scenes and other years are outside the training distribution.",
+        "Held-out tiles are different places, but only a few mining belts exist, so mine metrics rest on few sites."
+      ]
+    }
+  ]
+}

@@ -1,0 +1,13 @@
+{
+  "created_at": "2026-11-01T23:28:48Z",
+  "counts": {
+    "monitoring_areas": 7,
+    "cases": 14,
+    "findings": 439,
+    "alerts": 20,
+    "analyses": 14
+  },
+  "images": 565,
+  "images_bytes": 23792907,
+  "database_bytes": 7151616
+}

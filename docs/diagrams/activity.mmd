@@ -1,18 +1,31 @@
 flowchart TD
-  A([Start]) --> B[Define or approve area]
-  B --> C[Run monitor now or scheduler]
-  C --> D[Search CDSE STAC]
-  D --> E{Enough suitable observations?}
-  E -- No --> F[Store status / explain no pair]
-  F --> Z([End])
-  E -- Yes --> G{Credentials + rasterio available?}
-  G -- No --> H[Record blocked run]
-  H --> Z
-  G -- Yes --> I[Retrieve and preprocess image pair]
-  I --> J[Baseline or model analysis]
-  J --> K{Significant change?}
-  K -- No --> L[Store analysis with no alert]
-  K -- Yes --> M[Store finding, case and alert]
-  L --> Z
-  M --> N[Optional department routing / email]
-  N --> Z
+  A([Scheduled check, Check now or Archive replay]) --> Q[Queue run and serialize per AOI]
+  Q --> S[Search real catalogue]
+  S --> P{Provider succeeds?}
+  P -- No --> FAIL[Record failure and scheduler backoff]
+  P -- Yes --> NEW{New usable later scene and older baseline?}
+  NEW -- No --> NONE[Record no-new or no-suitable scene]
+  NEW -- Yes --> REF[Seek previous-year same-season reference]
+  REF --> PRE[Read aligned bands and mask poor pixels]
+  PRE --> DET[Change model plus spectral evidence or labelled fallback]
+  DET --> CH{Retained change regions?}
+  CH -- No --> NOCH[Store analysis with no significant change]
+  CH -- Yes --> CAUSE[Land-cover transitions and optional context rules]
+  CAUSE --> SEAS[Same-season test: true, false or unknown]
+  SEAS --> BEN{Seasonal recurrence or crop cycle?}
+  BEN -- Yes --> STORE[Store benign finding without alert]
+  BEN -- No --> AUTH[Check applicable registered zone; assign verdict and reasons]
+  AUTH --> EL{Evidence score and category eligible?}
+  EL -- No --> KEEP[Store finding without alert]
+  EL -- Yes --> DUP{Overlap with compatible active alert?}
+  DUP -- Yes --> MERGE[Update persistence; retain evidence]
+  DUP -- No --> DIS[Create alert and route department inbox]
+  DIS --> SMTP[SMTP outcome or saved unsent email as applicable]
+  SMTP --> REVIEW[Human acknowledgement, field verification and outcome]
+  FAIL --> END([Retain state and evidence])
+  NONE --> END
+  NOCH --> END
+  STORE --> END
+  KEEP --> END
+  MERGE --> END
+  REVIEW --> END

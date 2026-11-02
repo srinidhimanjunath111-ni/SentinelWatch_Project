@@ -1,15 +1,22 @@
 flowchart LR
-  U[Reviewer / Operator] --> UI[Dashboard\nHTML + JS + Leaflet]
-  UI --> API[FastAPI application]
-  API --> DB[(SQLite + SQLAlchemy)]
-  API --> MON[Monitoring service\nbackground task]
-  MON --> STAC[CDSE STAC catalogue\nexternal]
-  MON -. credentials required .-> PROC[CDSE Process API\nexternal]
-  MON -. rasterio required .-> GEO[Geospatial preprocessing]
-  GEO --> ANALYSE[Baseline analysis\nor optional Siamese U-Net]
-  ANALYSE --> DB
-  ANALYSE --> ALERT[Alerting + priority]
-  ALERT --> DB
-  ALERT -. optional SMTP .-> MAIL[Configured email recipient]
-  API --> PDF[Case PDF reporting]
+  U[Operator and departmental reviewer] --> UI[Browser console: JavaScript and Leaflet]
+  UI <-->|JSON and SSE| API[FastAPI routers and optional write login]
+  API <--> DB[(SQLite: evidence and workflow)]
+  API --> Q[In-process scheduler: bounded workers and per-site queue]
+  Q --> MON[Monitoring orchestration]
+  MON <--> CH[Provider chain: Earth Search then Planetary Computer then configured CDSE]
+  CH <--> CACHE[(Cropped band and SCL cache)]
+  MON --> GEO[Common 10 m UTM grid and cloud masks]
+  GEO --> ML[Siamese change and land-cover U-Net or labelled spectral fallbacks]
+  ML --> RULE[Regions, cause rules and same-season test]
+  CTX[Rainfall, disaster feeds, OSM and terrain] --> RULE
+  DB -->|In-force authorised zones| RULE
+  RULE -->|Cases, findings and reasons| DB
+  RULE --> AL[Alert eligibility, duplicate merging and department routing]
+  AL --> DB
+  AL --> DIS[In-app dispatch and optional SMTP]
+  DIS --> OUT[(Saved unsent email or SMTP outcome)]
+  DIS --> DB
+  API --> PDF[Case investigation PDF]
   PDF --> U
+  REG[Model registry and measured reports] --> API

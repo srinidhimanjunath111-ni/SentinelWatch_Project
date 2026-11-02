@@ -1,10 +1,23 @@
 flowchart LR
-  FE[Static frontend\nindex.html / app.js / CSS] --> BE[FastAPI routers\nmain, monitoring, operations]
-  BE --> SVC[Services\nmonitoring, analysis, alerting, reporting]
-  SVC --> SAT[Satellite adapter\ncopernicus.py]
-  SVC --> ML[ML package\nsiamese_unet + inference]
-  SVC --> GEO[Geospatial service]
-  BE --> ORM[SQLAlchemy models]
-  ORM --> SQL[(SQLite)]
-  SAT --> CDSE[CDSE endpoints]
-  SVC --> SMTP[Optional SMTP]
+  FE[templates and static/js views] <-->|JSON and SSE| MAIN[app/main.py and API routers]
+  MAIN --> AUTH[app/auth.py: optional write login]
+  MAIN --> PAY[schemas and services/payloads.py]
+  MAIN --> SCH[services/scheduler.py and events.py]
+  SCH --> MON[services/monitoring.py]
+  MON --> SAT[satellite/chain.py, stac.py and copernicus.py]
+  SAT --> GRID[satellite/grid.py and provider.py]
+  MON --> ANA[services/analysis.py]
+  ANA --> VOC[app/vocabulary.py]
+  MON --> ML[ml/inference.py, preprocessing.py and U-Nets]
+  MON --> CTX[services/context.py]
+  MON --> EV[services/evidence.py]
+  MON --> ALERT[services/alerting.py and dispatch.py]
+  ALERT --> REPORT[services/reporting.py]
+  MAIN --> REPORT
+  MON --> ORM[models.py and database.py]
+  ALERT --> ORM
+  MAIN --> ORM
+  ORM --> DB[(SQLite)]
+  MAIN --> SYSTEM[services/system.py and model registry]
+  DATA[data_tools and training] -->|Checkpoints and measured reports| ML
+  DATA --> SYSTEM

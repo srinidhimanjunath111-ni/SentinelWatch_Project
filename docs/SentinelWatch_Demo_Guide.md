@@ -1,57 +1,52 @@
-# SentinelWatch Live Demonstration Guide
+# SentinelWatch: ten-minute demonstration
 
-## Before the demo
+This guide was rehearsed in a real browser against an isolated copy of the app, using the shipped first-run data. Open with **Wayanad**, the clearest visual incident, and fire its alert live. The demo server is at `http://127.0.0.1:8000`. The times below are presentation allocations, not measured software runtimes.
 
-Run these commands in the project folder. Use the interpreter that has the dependencies installed.
+## Prepare the saved evidence
 
-```powershell
-python -m pip install -r requirements-core.txt
-python -m uvicorn app.main:app --host 127.0.0.1 --port 8000
-```
+- Open [Wayanad archive incident](http://127.0.0.1:8000/#/case/4f26f148-c1f2-422d-901f-419e71688f1b), [Jewar archive incident](http://127.0.0.1:8000/#/case/78bb17c0-26d3-4a1e-b2cb-8673f62e2b55), [Rawa archive incident](http://127.0.0.1:8000/#/case/ac5baeb8-b7d3-4966-a422-8f763e4cbda6) and [Kanha site](http://127.0.0.1:8000/#/site/9c7ed254-482d-4da3-9e55-662367272aac) in tabs. The IDs belong to the shipped snapshot.
+- Prepare [Operations](http://127.0.0.1:8000/#/), [Alerts](http://127.0.0.1:8000/#/alerts), [Departments](http://127.0.0.1:8000/#/departments), [Zones](http://127.0.0.1:8000/#/zones) and [Models and data](http://127.0.0.1:8000/#/models).
+- Keep the [final project PDF](../output/pdf/SentinelWatch_Final_Year_Project_Report.pdf) and [real screenshots](screenshots/README.md) available locally. A **case investigation PDF** is a separate artifact, downloaded through **Download PDF report** on an incident. The rehearsal downloaded a valid one (812 KB).
+- Check projector readability. Dynamic “ago”, scheduler countdown and latest catalogued scene labels change with time; do not memorise them as fixed results. The header's **Live** means the update connection, while the incident's **Archive replay** identifies historical processing.
+- **Use live:** **Start replay**, **Acknowledge**, **Send to field verification** and **Download PDF report**. Each replay adds real replay-badged alerts. Avoid **Remove site** and deleting zones. **Check now** is safe, but usually reports a cloudy scene or no new scene, because Sentinel-2 revisits every 2-5 days; that is correct behaviour, so use it to make that point rather than to produce an alert.
+- **On a new computer, follow the [setup guide](../SETUP_GUIDE.md) and run each replay you plan to show once beforehand.** The rehearsal timings below used imagery already cached on disk. An uncached run downloads from the satellite archive first, and the one uncached live check measured took 62.5 s.
+- **Sound:** click anywhere on the page first, and check the chime and the speaker icon. The chime has never been heard in testing, because browser tests ran headless.
+- **Measured in rehearsal, at 1280 × 720, with cached imagery:** from clicking **Start replay** to the alert banner took 12.7 s on Wayanad, 10.9 s on Delhi and 11.1 s on a repeat Wayanad replay. A full cached Wayanad replay took 31 s when forced onto the CPU, so a laptop with no GPU needs more waiting time.
 
-Open `http://127.0.0.1:8000/`, then verify `http://127.0.0.1:8000/api/health` and OpenAPI at `http://127.0.0.1:8000/docs`. The application initializes its SQLite schema at startup. Do not copy real values into `.env.example`; make a local `.env` with CDSE/SMTP settings only when authorized.
+## Timed script
 
-## Safe core demonstration
+| Time | Exact path and safe interaction | Spoken explanation |
+|---|---|---|
+| 0:00–1:30 | Open the Wayanad site from **Sites**. The replay dates are pre-filled. Click **Start replay**. Read out the stages in **Status**. When the red banner appears, click it to open the new incident. Point to **Before**, **After**, **Archive replay** and **Natural event: landslide**. Drag the comparison divider. | “This runs the real pipeline on real past scenes, and the only difference from live is the Archive replay badge. Sentinel-2 images a place every 2-5 days, so I cannot make a new satellite pass happen on request. The image pair is 5 February 2024 to 16 December 2024. The landslide group covers 76.71 ha; the UI rounds it to 76.7 ha. The after image is delayed by months of cloud, so this does not show immediate detection. The alert was dispatched as soon as the scene finished processing.” |
+| 1:30–2:30 | In the right verdict panel, show **Why this verdict**. Use the region buttons or a **Changed regions** table row to change selection. Scroll to **Same-season reference**, **Context**, and expand **Scene IDs and provenance**. | “The group total and selected region area differ. The binary model proposes change; land-cover, spectral, terrain and rainfall evidence propose a cause. Confidence is a review score, not accuracy or proof. Read the actual reference date; missing evidence remains missing.” |
+| 2:30–3:15 | Click **Operations**. Point to **Sites**, **Scenes analysed**, **Open alerts**, **Live / Replay** and **Activity**. Open Wayanad by its site name; inspect **Scene timeline**, **Findings history** and **Configuration**. | “The shipped data has 7 sites, 14 cases and 20 grouped alerts: 3 live and 17 replay, plus the replay I just ran. Checking the catalogue does not produce a new image. A cloudy or no-new-scene result is valid. The map imagery intentionally has no third-party boundary or label layer.” |
+| 3:15–4:15 | Open the prepared **Jewar** archive tab. It initially selects a suspected region. In the verdict panel click **Construction · 2.80 km²**, or select a **Construction / Authorised activity** row in **Changed regions**. Confirm **Construction inside an authorised zone** and its group total. | “The authorised construction group is 633.41 ha; the UI displays 6.33 km². It is a match to an illustrative activity footprint, not a legal finding about the whole site. Separate suspected and needs-review alerts exist nearby.” |
+| 4:15–5:00 | Open the **Rawa** tab. Show **Suspected unauthorised mining**, **Why this verdict** and the group total. | “The mining group is 3.78 ha. This is our weakest evidence: tile selection differs from the research dossier and attribution is uncertain. No authorisation in this local register means absence of record, not proof of illegality.” |
+| 5:00–5:45 | Open the **Kanha** site tab. Show **Findings history** and the completed **Archive replay** entry. Open that entry if desired; a seasonal region has no linked alert action. | “The recorded archive result retains 1,912.63 ha of seasonal vegetation with zero alerts. Other weak findings remain evidence. A timeline saying Change found does not itself mean an alert or a harmful event.” |
+| 5:45–6:30 | Click **Zones**. In **Permits and authorised zones**, click an existing zone's name to focus it; expand **Reference and source**. Do not draw or submit. | “These are illustrative outlines. The code checks acquisition date, type and overlap. A 1 km review buffer around approximate boundaries routes uncertainty for review; it does not extend permission. PEKB's clearance is contested.” |
+| 6:30–7:30 | Click **Departments**; select **Kerala State Disaster Management Authority**. Open your new Wayanad replay alert. In its incident, click **Acknowledge**, type a short note and confirm, then **Send to field verification**. Scroll to **Dispatch log**, then click **Download PDF report**. | “The department receives it automatically. Each action is recorded in the audit trail. Delivered to inbox is separate from email. Saved to outbox (SMTP not configured) means the email was not sent. These mailboxes are placeholders, so a demo cannot reach a real office. Live email only needs SMTP settings.” |
+| 7:30–8:15 | Click **Alerts**. Point to **Status**, **Severity**, **Category**, **Department** and **Origin**. Choose **Origin → Archive replay**, then restore **All** if desired. | “Each row groups eligible regions by category and verdict. Live and replay stay separate. Repeating a replay creates another replay ID and can add replay alerts; it does not replace this clean evidence.” |
+| 8:15–9:30 | Click **Models and data**. Read the change card, per-dataset table, land-cover card and limitations. | “Installed v2 scores 0.461 OSCD F1 and 0.516 India forest F1, versus v1's 0.248 and 0.101. Land cover scores 0.560 accuracy and 0.526 macro F1 against reference labels. Published FC-Siam-diff is about 0.58 on OSCD; ours is below it. v2 is not fully blind, out-of-fold OSCD F1 is 0.289, and city F1 ranges from 0.004 to 0.751.” |
+| 9:30–10:00 | Return to Wayanad's saved comparison or the report PDF. Explain the review controls without clicking them. | “The result is a traceable lead, not enforcement. Clouds, weak labels, incomplete permits and rules cause uncertainty. The short-pair evidence rule reduces browning alarms but can miss real change. Verdicts have no field validation.” |
 
-1. Show the dashboard title and state the boundary: it detects potential physical change, not illegality.
-2. Show **Live data status**. Explain that `connected (sqlite)` means the local database is reachable; it does not prove satellite imagery has been downloaded.
-3. Select **Add monitoring area** and explain AOI input/drawing. Create a small real/public area only if the reviewer permits storing it locally; otherwise show the form without submitting.
-4. Show **Discover priority areas**. Explain it queries catalogue availability over grid cells and marks results as preliminary candidates, not incidents.
-5. If CDSE metadata access is available, submit an AOI and choose **Check now**. The API initially returns a monitoring-run ID because processing is background work. Then refresh area/run data and inspect acquisition/provenance fields.
-6. Show `/api/system/status` or dashboard system status. Explain every warning honestly—credentials, Rasterio, scheduler and model status.
-7. If a real analysis completes, inspect its case/finding/alert, assign a department, inspect notification attempts, then use the case report route. Say exactly which step supplied each item.
+## Recovery plan
 
-## Preparing the optional operational path
+| Failure | Read-only recovery | What to say |
+|---|---|---|
+| Venue Wi-Fi fails | Keep the server running and use saved incidents. A replay of already-cached imagery still works, and took 10.1 s with providers blocked. Avoid **Check now**. | “These are already processed real observations. The recorded offline browser proof loaded comparison layers, moved the slider and downloaded a valid case PDF with external requests blocked. New catalogue searches and uncached pixels still need network.” |
+| Imagery provider fails | Read the recorded error and move to saved evidence. Do not keep clicking Check now. | “Per-band retry, failover and a hard imagery-fetch deadline limit waiting; they do not guarantee provider availability.” |
+| Clouded / no new scene | Show **Status**, **Scene timeline** and saved **Findings history**. | “The newest catalogued scene may be unusable; it is not necessarily the last analysed scene. The app does not invent an observation.” |
+| Replay slow or blocked | Open the existing badged replay incident from **Alerts**. | “A new replay of uncached scenes needs the archive; completed evidence does not.” |
+| Projector too narrow | Use the prepared deep links, modest browser zoom and one evidence panel at a time. | Keep acquisition dates, origin and verdict readable. |
+| Browser loses connection | Reload the local page once; preserve the existing server/database. If the server has actually failed, restart it with the same launch command against the same storage. | “Saved evidence persists. A restart is different from deleting and restoring the snapshot.” |
+| Model unavailable | Show actual method/status; use the saved case with its original provenance. | “A spectral fallback is labelled. It is not a new neural-model result.” |
+| SMTP absent or failed | Show **Delivered to inbox** and the separate email outcome. | “Routing is recorded; this email was not sent. SENT would mean server acceptance, not officer receipt.” |
+| Case PDF unavailable | Show on-screen evidence and the inspected final project PDF. | “A case download and the project report are separate. A failed download is not a successful fresh report.” |
 
-1. Install the additional prerequisites only if you need them:
+## Return to the clean snapshot after a separate rehearsal
 
-```powershell
-python -m pip install -r requirements-operational.txt
-```
+**Run this before the demo, or after a rehearsal, not during the presentation.** Repeated replays add replay alerts because each new replay has its own identity. To discard local rehearsal data, stop the server, delete `instance/sentinelwatch.db*` (including WAL/SHM sidecars), `storage/outputs` and `storage/outbox`, then restart with the normal launch command. Keep `storage/satellite-cache`, because that is what makes replays fast. This is a destructive reset of local cases, reviews and alerts, so retain any evidence you need first.
 
-2. Obtain authorized CDSE OAuth configuration and put it in local environment variables documented by `.env.example`.
-3. Restart the service and confirm that system status no longer says imagery credentials/Rasterio are unavailable.
-4. Choose a small AOI and dates with a reasonable cloud cover. A catalogue result is not automatically a usable pair; inspect date spacing and quality.
-5. Use `POST /api/areas/{aoi_id}/check-now` via the dashboard or API docs. Preserve the run ID, provider product IDs and returned status for your evidence.
+`restore_snapshot_if_empty()` in `app/snapshot.py` checks that monitoring areas and cases are empty, then imports rows from `demo_snapshot/` and copies its JPEG outputs. This exact reset was run on the demo instance and restored 7 sites, 14 cases and 20 alerts. Raw imagery caches and outbox bodies are not part of the snapshot.
 
-## Alerts, departments and reports
-
-- Add a review department through the dashboard/API.
-- Assign a genuine alert only after one exists. Inspect `GET /api/alerts/{alert_id}/notifications` to show whether the notification was merely recorded, not configured, sent or failed.
-- Generate the case report only for a real stored case. If ReportLab is unavailable, say the report module is optional and unverified, not that the report was generated.
-
-## If external services fail
-
-- **No catalogue response:** show the error/refresh status; do not retry indefinitely or invent observations.
-- **No suitable pair:** explain cloud/date constraints and show that the run ends without an analysis.
-- **No CDSE OAuth/Rasterio:** demonstrate metadata/UI/API/SQLite modules and point to the transparent blocked status.
-- **No trained model:** show `NOT_TRAINED`; describe baseline code as the current analysis method, not AI performance.
-- **No SMTP:** show recorded notification status and say delivery was not demonstrated.
-
-## Backup 2-minute sequence
-
-Start the app, open the dashboard, show `/api/health`, status cards, model governance, and `/docs`. Explain the as-built architecture and run `python -m pytest -q` plus `python -m ruff check .` beforehand. This demonstrates verified platform behaviour without pretending an external imagery pipeline is live.
-
-## Demo data
-
-`python -m app.demo_seed` can create synthetic fixtures only if you explicitly choose to use it. Set `DEMO_MODE=true` only for that labelled demonstration, say “synthetic demo data” on every relevant slide, and never mix it with claims about live satellite results.
+Use the final [viva bank](SentinelWatch_Viva_Questions.md) for the measurement caveats. Never describe a company or person as acting illegally.
