@@ -964,10 +964,21 @@
     "backoff_cleared": true
   },
   "soak": {
-    "status": "running",
-    "planned_minutes": 45,
-    "pid": 41320,
-    "sample_interval_seconds": 60
+    "status": "completed",
+    "minutes": 45.0,
+    "samples": 46,
+    "rss_mb": {
+      "start": 345,
+      "max": 461,
+      "end": 84
+    },
+    "overview_seconds_max": 0.055,
+    "threads_max": 24,
+    "open_files_max": 204,
+    "non_200_overview": 0,
+    "log_errors": 0,
+    "scheduler_ticks_changed": 46,
+    "note": "Scheduler ticked throughout, but restored sites were not yet due, so the sampled scheduler ran no due checks; active_runs stayed 0 at every sample. Repeated archive replays were run during the window. Scheduler-initiated checks were proved earlier by a clean-install run, not by this soak."
   },
   "offline_ui_proof": {
     "external_browser_requests_blocked": true,
