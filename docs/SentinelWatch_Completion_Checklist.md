@@ -16,7 +16,7 @@ Final documentation package: v3.0.0 on `feature/complete-sentinelwatch`. The exi
 | Viva and speaking guide | Reconciled with final measurements and evidence limits; no unfinished-training claim remains |
 | Screenshots | All required screens captured at 1920 × 1080, individually below 400 KB, and visually inspected. See [nine captures and provenance](screenshots/README.md) |
 | Diagrams | All Mermaid sources rendered successfully using the CLI under `/tmp`. Rendered PNGs are in `docs/diagrams/rendered/`; the report embeds them. Long/dense diagrams retain high-resolution originals for zooming |
-| Final project PDF | [Final report](../output/pdf/SentinelWatch_Final_Year_Project_Report.pdf): 38 pages, about 5.9 MB. Title page, contents, page numbers, wrapped/repeated table headers, nine screenshots and ten rendered diagrams. Every page rendered to an image and viewed; no table overflow or text outside margins found |
+| Final project PDF | [Final report](../output/pdf/SentinelWatch_Final_Year_Project_Report.pdf): 38 pages, about 4.7 MB. Title page, contents, page numbers, wrapped/repeated table headers, nine screenshots and ten rendered diagrams. Every page rendered to an image and viewed; no table overflow or text outside margins found |
 | Obsolete PDF | Removed with `git rm output/pdf/SentinelWatch_Final_Year_Project_Review_Package.pdf` after building and inspecting its replacement |
 | Release notes/index/changelog | Updated for v3.0.0 and final deliverables. SciPy/ReportLab dependency and launcher-presence claims rechecked against code; old missing-dependency claims removed |
 | Scope and data | Documentation, screenshots, rendered diagrams and report PDF only. No mutation server was needed on port 8500. Prior runtime proofs were read, not repeated on the demo instance |
@@ -42,7 +42,8 @@ Tools were installed only in `/tmp/sentinelwatch-docs-venv` and `/tmp/sentinelwa
 | `/tmp/sentinelwatch-docs-venv/bin/python /tmp/sw-inspect-pdf.py` and image viewing | 38 pages rendered; all pages viewed, including updated diagram pages. Zero text-boundary violations; 31 outline/contents entries. Visual inspection found no overflowing tables |
 | `/tmp/sentinelwatch-docs-venv/bin/python /tmp/sw-check-docs.py` | 47 checks passed, zero errors: local target existence, forbidden/stale states, screenshot dimensions/size, diagram presence, checkpoint/test hashes, measured F1/site values, viva numbering and PDF contents/size |
 | Requested recursive token grep over README, release notes, changelog and docs | No output; exit 1 means zero leftover tokens |
-| `git diff --check -- README.md RELEASE_NOTES.md CHANGELOG.md docs/ output/pdf/` | Final pass has zero whitespace errors. One trailing-space finding in the first text commit was corrected in the follow-up |
+| `/tmp/sentinelwatch-docs-venv/bin/python /tmp/sw-finalize-pdf.py` | Removed ASCII85 wrappers while preserving standard image compression; all 38 page renders are byte-for-byte identical to the inspected version. Final PDF is 4,743,744 bytes |
+| `git diff --check e46bfbb -- README.md RELEASE_NOTES.md CHANGELOG.md docs/ output/pdf/` | Final pass has zero whitespace errors. Earlier checks found a README trailing space and later treated the ASCII PDF's formatting as whitespace; corrected text and binary PDF packaging passed |
 | Fetch `https://arxiv.org/html/1810.08462` | Table 1 confirms the cited published score. The PDF endpoint first timed out; the HTML full text was available |
 
 The prior `offline_proof`, `offline_ui_proof`, `restore_proof` and `soak` results are attributed to `reports/demo/site_results.json`. They were not rerun during this documentation task and are not a new full-suite result.
