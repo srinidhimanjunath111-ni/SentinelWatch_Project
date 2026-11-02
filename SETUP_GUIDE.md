@@ -84,7 +84,7 @@ Go to **http://127.0.0.1:8000** in Chrome, Edge or Firefox. Check that:
 
 - The **Operations** screen shows a satellite map with **7 sites**.
 - The saved demo data has **14 cases** and **20 alerts**.
-- **Models and data** shows both models as ready, not "not trained".
+- **Models and data** shows both models as **Loaded**. They can show **Not loaded** for the first 30 seconds or so after each start, so wait and reload the page.
 
 For a quick technical check, http://127.0.0.1:8000/api/health should say `"status":"ok"`.
 
@@ -151,7 +151,7 @@ rm -rf instance/sentinelwatch.db* storage/outputs storage/outbox
 | **A monitoring run is active for this area** | The app is already checking that site, which often happens just after starting. Wait a minute and try again. |
 | A replay or check fails with a catalogue or imagery error | The free satellite service may be busy. Wait a few minutes and try again. During a demo, open a saved incident from **Alerts** instead. |
 | **Check now** finds no new alert | This is normal. Sentinel-2 passes over a place only every 2–5 days, and clouds can hide it. Use **Start replay** to show an alert. |
-| **Models and data** shows a model isn't loaded, or results say spectral baseline | PyTorch didn't install. Run the matching command below, then restart the app. |
+| **Models and data** still shows **Not loaded** after a minute and a page reload | PyTorch probably didn't install. Run the matching command below, then restart the app. |
 | No alert sound | Click once on the page, because browsers block sound until you do. Then check the speaker icon and the laptop volume. |
 | There are more alerts than expected | Replays add alerts. [Reset the data](#return-to-clean-demo-data) when you're not presenting. |
 | Something else, or the install got stuck | Stop the app, delete the `.venv` folder, and run Step 4 again. Your demo data isn't affected. |
