@@ -1,5 +1,8 @@
 # SentinelWatch monitored-site evidence dossier
 
+**Research versus final results.** “Expected” categories/verdicts below were hypotheses from visual/public-record research, not forced application outputs. The final measured pipeline results are in [the project report](../SentinelWatch_Project_Report.md#102-measured-site-results) and `reports/demo/site_results.json`. Headline hectares refer only to their stated category/verdict. Rawa remains the weakest case: final pipeline tile selection differs from this dossier and attribution is uncertain. Delhi is cloud-limited, Wayanad is a delayed view after months of cloud, and PEKB's clearance is contested. None of these verdicts has field validation.
+
+
 Research snapshot: 1 November 2026 UTC (local date 2 November). These are **visually verified physical changes and expected demo interpretations**, not measured model performance or legal determinations. No app replay, classifier, alert dispatch or government login was run. Archive output must retain `origin = "archive_replay"`.
 
 ## Method and count definitions

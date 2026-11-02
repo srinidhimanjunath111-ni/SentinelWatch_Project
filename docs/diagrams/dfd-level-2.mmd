@@ -3,7 +3,7 @@ flowchart TB
   S <--> P[Ordered provider failover and disk cache]
   S --> C[2.2 Read AOI SCL and select new usable later scene]
   C --> B[2.3 Select older baseline; extend search if needed]
-  B --> REF[2.4 Seek same-season reference from last year]
+  B --> REF[2.4 Seek same-season reference from an earlier year]
   REF --> A[2.5 Align six bands and buffered valid masks]
   A --> M{Change checkpoint available?}
   M -- Yes --> ML[2.6 Siamese probability and spectral fusion]

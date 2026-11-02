@@ -1,8 +1,18 @@
 # Changelog
 
-Source: `git log --oneline -30` on `feature/complete-sentinelwatch`, re-read while preparing this documentation. Entries describe committed work; they do not imply runtime verification by the documentation worker. Work still uncommitted in the shared checkout is not assigned a fabricated commit ID or test result.
+Source: `git log --oneline -30` on `feature/complete-sentinelwatch`, re-read while preparing this documentation. Entries describe committed work; they do not imply runtime verification by the documentation worker. Work is not assigned a fabricated commit ID or test result.
 
-## v3.0.0 — integration handoff, 2 November 2026
+## v3.0.0 — final demonstration package, 2 November 2026
+
+### Final measured package
+
+- Installed v2: OSCD F1 0.461 and India forest F1 0.516; v1 comparison 0.248 and 0.101. Land-cover accuracy 0.560 and macro F1 0.526. Registry/report reconciliation includes non-blind selection, 0.289 out-of-fold OSCD F1, city variation and reference-label limits.
+- `c290d23` — v2 replacement after the v1 investigation; `190ce3a` — training guide, dataset summaries and CPU timing.
+- `2107429` — bounded imagery fetches and cached replay during outages; `c4dc5c6` — illustrative-boundary review routing.
+- `0621e70` — real v2 first-run snapshot and measured site results; `8f6d585` — fresh-clone restoration, uncached timing and offline recovery proof; `d53420e` — offline browser comparison and PDF proof; `e46bfbb` — measured soak results. The 45-minute soak ticked but ran no due checks; scheduler-started checks were proved by the earlier clean-install run.
+- Final docs reconcile grouped alerts, live/replay separation, per-band retry, hard fetch deadline, 1 km illustrative-zone review buffer, map-layer policy and short-pair trade-offs. Observed overnight imagery-read failures have no proven cause; no overnight scheduler run is claimed.
+- Real UI screenshots, read-only demo rehearsal, final project report PDF and rendered Mermaid diagrams replace placeholders and the obsolete review package. Known Docker, Windows, SMTP, login, chime and field-validation limits remain explicit.
+
 
 ### Monitoring, evidence and workflow
 
@@ -40,7 +50,7 @@ These are research-stream commits, not automatic claims that an application aler
 - `ae46411` — `docs: align ten system diagrams with v3 implementation`: architecture, DFD, workflow, component, deployment and ER sources.
 - `721042e` — `docs: add honest v3 demo script and viva preparation`: ten-minute script, recovery plans, speaking scripts and 70 viva answers.
 - The final documentation handoff also reconciles current rule/preprocessing changes and delivers the checklist, index, screenshot instructions, release notes and changelog. Its own commit is intentionally not self-referenced by a made-up hash.
-- No model/site measurement is invented. The report inventories pending metric/result tokens. Docker deployment and the final runtime package remain unverified here. Obsolete PDF deletion is left to the integrator; no new PDF is built.
+- Measured model/site values now replace all result placeholders. Docker deployment remains unverified. The final project PDF replaces the removed obsolete review package.
 
 ## Initial repository
 

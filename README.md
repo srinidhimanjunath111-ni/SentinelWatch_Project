@@ -8,20 +8,37 @@ Sentinel-2 revisits a place roughly every **2–5 days**. Checking every 6, 12 o
 
 ## Screenshots
 
-Capture genuine application screens before submission. These are placeholder links, not evidence that screenshots already exist:
+These are real, read-only captures of the first-run demo at `http://127.0.0.1:8000`, at 1920 × 1080. Each image is under 400 KB. Dates on incident images are acquisition dates; Archive replay stays visible.
 
-- [Operations console](docs/screenshots/01-operations.png)
-- [Site and scene timeline](docs/screenshots/02-site-timeline.png)
-- [Incident evidence and comparison](docs/screenshots/03-incident.png)
-- [Department inbox and dispatch outcomes](docs/screenshots/04-departments.png)
-- [Models and data](docs/screenshots/05-models.png)
-- [Permits and illustrative zones](docs/screenshots/06-zones.png)
+![Wayanad incident: dated comparison and landslide review evidence](docs/screenshots/wayanad.jpg)
 
-See [capture instructions](docs/screenshots/README.md). No synthetic satellite result is a presentation fallback.
+| Screen | Capture |
+|---|---|
+| Operations | [Map, sites and live/replay alert totals](docs/screenshots/operations.jpg) |
+| Wayanad | [Landslide comparison](docs/screenshots/wayanad.jpg) |
+| Jewar | [Selected authorised construction region](docs/screenshots/jewar.jpg) |
+| Rawa | [Suspected mining, no authorisation on record](docs/screenshots/rawa.jpg) |
+| Kanha | [Site with retained findings and no alerts](docs/screenshots/kanha.jpg) |
+| Alerts | [Grouped alerts and Origin filter](docs/screenshots/alerts.jpg) |
+| Departments | [Inbox and separate delivery outcomes](docs/screenshots/departments.jpg) |
+| Zones | [Illustrative register](docs/screenshots/zones.jpg) |
+| Models | [Installed v2 and measured scores](docs/screenshots/models.jpg) |
+
+See [capture provenance](docs/screenshots/README.md) and the [final project report PDF](output/pdf/SentinelWatch_Final_Year_Project_Report.pdf).
+
+## Measured results
+
+Installed change model **v2** scores **0.461 OSCD test F1** and **0.516 India forest test F1**, compared with v1's **0.248** and **0.101**. Land-cover v1 scores **0.560 accuracy**, **0.526 macro F1** and **0.373 macro IoU**. These are segmentation/reference-agreement scores, not verdict accuracy. Sources: [registry](models/registry.json), [selection](reports/ml/change_selection.json) and [test reports](reports/ml/).
+
+The OSCD result is below the published FC-Siam-diff result of **57.92% F1 (about 0.58)** in [Daudt et al., Table 1](https://arxiv.org/html/1810.08462), which used thirteen bands; this project uses six and different preprocessing. v1's test result was seen before v2 was designed, so v2 is **not fully blind**. Out-of-fold OSCD F1 is **0.289**, and v2 test-city F1 ranges from **0.004 to 0.751**. The pooled **0.461** therefore carries real uncertainty. Land-cover scores measure agreement with **WorldCover and historical mining polygons**, not ground truth. No verdict has field validation.
+
+The restored snapshot contains **7 sites, 14 cases and 20 grouped alerts: 3 live and 17 replay**. Headline archive results are Wayanad landslide **76.71 ha**, Jewar construction **633.41 ha**, Navi Mumbai construction **133.51 ha**, PEKB mining **53.75 ha**, Rawa mining **3.78 ha**, Kanha seasonal vegetation **1,912.63 ha** with **0 alerts**, and Delhi flood **152.93 ha**. Hectares refer only to the stated primary category/verdict, never all changed land. Jewar, PEKB and Navi also have other alerts. [Measured site table and qualifications](docs/SentinelWatch_Project_Report.md#102-measured-site-results).
+
+Rawa is the weakest evidence, with a tile mismatch against the research dossier and uncertain attribution. Delhi is cloud-limited. PEKB's clearance is contested; a local illustrative registry match does not settle it. Wayanad's after image follows months of cloud, so this is a delayed view, not immediate detection. Research “expected” verdicts were hypotheses, not forced outputs.
 
 ## Quick start
 
-Use Python 3.12 and a virtual environment. Run from the repository root. The launch-script commands below are the intended entry points; their presence and successful launch remain **pending integrator check**. They were absent during the initial documentation inspection. Until supplied, use the equivalent manual setup below.
+Use Python 3.12 and a virtual environment. Run from the repository root. Both launch scripts are present and install operational requirements plus PyTorch when needed. The Windows script has not been run on Windows here. The exam demo server is already running; leave it running during presentation preparation.
 
 macOS/Linux:
 
@@ -39,7 +56,7 @@ Manual macOS/Linux setup:
 
 ```sh
 python3.12 -m venv .venv
-.venv/bin/python -m pip install -r requirements-operational.txt scipy
+.venv/bin/python -m pip install -r requirements-operational.txt torch
 cp .env.example .env
 .venv/bin/python -m uvicorn app.main:app --host 127.0.0.1 --port 8000
 ```
@@ -48,14 +65,14 @@ Manual Windows PowerShell setup:
 
 ```powershell
 py -3.12 -m venv .venv
-.\.venv\Scripts\python.exe -m pip install -r requirements-operational.txt scipy
+.\.venv\Scripts\python.exe -m pip install -r requirements-operational.txt torch
 Copy-Item .env.example .env
 .\.venv\Scripts\python.exe -m uvicorn app.main:app --host 127.0.0.1 --port 8000
 ```
 
 Copy the configuration template only on first setup; preserve an existing `.env`. Open [the console](http://127.0.0.1:8000), [health](http://127.0.0.1:8000/api/health) or [API documentation](http://127.0.0.1:8000/docs). SQLite and storage directories are created at startup. Launch commands are instructions, not a claim that Windows or Linux execution was tested here.
 
-Fresh-install gap at inspection: `app/services/analysis.py` imports `scipy.ndimage`, but the operational requirements do not explicitly declare SciPy. The manual commands above include it as a temporary dependency workaround; the backend requirements and launch scripts need integrator reconciliation. These installation commands were not run here. Operational dependencies are intended to support real raster processing and the labelled spectral fallback. Learned inference additionally needs `requirements-ml.txt` and compatible checkpoints. Training is still in progress at this documentation handoff; no measured model performance is asserted here. Read `/api/models` and `models/registry.json` for the installed model's actual status and evaluated facts. A loadable checkpoint and a held-out evaluation are different things.
+The operational requirements now explicitly include SciPy and ReportLab. The launch scripts attempt PyTorch installation; without a loadable model the run records its spectral fallback. Both installed checkpoints are evaluated and registered as `READY`. A clean-install restoration is recorded in `reports/demo/site_results.json`; those earlier checks were not repeated against the running demo instance. For the authoritative training recipe, use [training/README.md](training/README.md).
 
 ## Configuration
 
@@ -72,6 +89,8 @@ Settings are read from environment variables and, when python-dotenv is availabl
 | `MIN_AOI_CLEAR_FRACTION`, `MIN_PAIR_VALID_FRACTION` | Default 0.60 usable AOI coverage; 0.30 shared coverage for pair selection |
 | `SEASONAL_REFERENCE_WINDOW_DAYS` | Search within 45 days either side of the date 365 days before the later scene |
 | `MAX_CATCH_UP_DATES` | Default 12 recent dates retained for chronological live catch-up after an established baseline; older excess dates may be skipped and audited |
+| `IMAGERY_FETCH_BUDGET_SECONDS` | Hard deadline for a remote imagery operation; production budget 120 s, isolated child can be terminated if a raster read hangs |
+| `ILLUSTRATIVE_ZONE_REVIEW_BUFFER_M` | 1 km review buffer around approximate zones; flags uncertainty without extending authorisation |
 | `PRELOAD_MODELS` | Background model warm-up at startup, enabled by default |
 | `MAX_AOI_REQUEST_PIXELS` | Default 1024 on the longest grid side, at 10 m; split larger sites |
 | `CHANGE_CHECKPOINT`, `LANDCOVER_CHECKPOINT` | Optional checkpoint overrides; expected installed paths are under `models/checkpoints/` |
@@ -89,11 +108,11 @@ The local permit registry is not connected to a comprehensive official clearance
 The browser uses locally vendored Leaflet and JavaScript modules. FastAPI serves the dashboard and JSON API. SQLAlchemy stores sites, scenes, runs, analyses, cases, findings, alerts, departments, notification attempts and audit events in SQLite. A single application process owns the scheduler and Server-Sent Events bus.
 
 1. Create a site or open a seeded site; start a check or wait for its schedule.
-2. Query Earth Search, then Planetary Computer on provider failure; use CDSE only when configured. Read cropped COG windows and cache them.
-3. Select a usable later scene, an older baseline and, if available, a same-season reference from the previous year. Align six bands on one 10 m UTM grid; mask SCL cloud/shadow/no-data plus residual haze and buffer invalid edges.
+2. Query Earth Search, then Planetary Computer on provider failure; use CDSE only when configured. Read cropped COG windows and cache them. Each band has its own retry; remote fetches have a hard deadline.
+3. Select a usable later scene, an older baseline and, if available, a same-season reference from an earlier year. Align six bands on one 10 m UTM grid; mask SCL cloud/shadow/no-data plus residual haze and buffer invalid edges.
 4. Run a Siamese U-Net when loadable, combined with spectral evidence; otherwise label the spectral fallback. Classify land cover with a single-date U-Net or an explicitly recorded spectral fallback.
 5. Classify connected regions, test seasonal persistence and date/type/overlap against registered zones. Store plain-language reasons and georeferenced evidence.
-6. Retain seasonal findings without alerts. Apply evidence/category filters and duplicate merging to other findings. Route eligible alerts to a department inbox immediately; use SMTP or save an unsent `.eml` with `OUTBOX_SAVED`.
+6. Retain seasonal findings without alerts. Group eligible regions by category and verdict, then apply duplicate merging with the same category and verdict. Live and replay remain separate, and replay merging stays within one replay ID. Route eligible alerts to a department inbox immediately; use SMTP or save an unsent `.eml` with `OUTBOX_SAVED`.
 7. Review the before/after comparison, timeline, reasons, context and dispatch log. Record acknowledgement, field verification and an outcome. Download a case investigation PDF when reporting dependencies are available.
 
 See [architecture and database diagrams](docs/diagrams/) and the [project report](docs/SentinelWatch_Project_Report.md). An alert marked `dispatched` records workflow routing; inspect its channel outcome before claiming an email was sent. SMTP `SENT` means server acceptance, not human receipt.
@@ -117,35 +136,15 @@ Verified bibliography and source limitations are in the report. The helpers `acq
 
 ## Reproduce training and evaluation
 
-These are resource-intensive reproduction instructions, **not commands run during documentation work**. Do not start them alongside an existing training job on the small presentation machine. Obtain the source datasets lawfully and retain their manifests/licences. The India builders expect `data/raw/naturalearth/ne_50m_admin_1.geojson`; land-cover building also expects `data/raw/mining_maus2022/global_mining_polygons_v2.gpkg`. Supply those inputs before running the builders.
+Use [training/README.md](training/README.md) for the complete v1, land-cover, three-fold v2 calibration, frozen test evaluation and registry recipe. It includes the actual commands and source licences. These resource-intensive commands were not rerun for documentation and should not be started on the demo machine today.
 
-```sh
-.venv/bin/python -m pip install -r requirements-ml.txt
-.venv/bin/python -m data_tools.fetch_oscd
-.venv/bin/python -m data_tools.build_india_forest_change
-.venv/bin/python -m data_tools.build_india_landcover
-.venv/bin/python -m training.train --datasets oscd --version v1 --run-dir data/processed/runs/change_v1
-.venv/bin/python -m training.evaluate export-change --run-dir data/processed/runs/change_v1 --report reports/ml/change_v1_training.json
-.venv/bin/python -m training.evaluate change --checkpoint data/processed/runs/change_v1/best.pt --dataset oscd --report reports/ml/change_v1_oscd_test.json
-.venv/bin/python -m training.train_landcover --version v1 --run-dir data/processed/runs/landcover_v1 --report reports/ml/landcover_v1_training.json
-.venv/bin/python -m training.evaluate landcover --checkpoint data/processed/runs/landcover_v1/best.pt --report reports/ml/landcover_v1_test.json
-```
+v1 used OSCD only; v2 used OSCD plus India forest pairs, per-date median/IQR normalisation, alignment and EMA weights. The final model trained on all official OSCD training cities; its OSCD validation predictions came from folds, not a separate final-model validation set. The India datasets use geographic splits. Registry/test checkpoint hashes agree. Re-running v1 with today's sampler does not exactly reproduce its original run; the training guide names the original code revision.
 
-The change CLI also supports `--norm batch|group`, `--normalisation pooled|per_date` and `--ema-decay`; defaults are not a statement of the final selected model. Inference follows checkpoint-recorded preprocessing. Per-date normalisation can cancel broad atmospheric differences but can also erase widespread change. Preserve the actual run configuration.
-
-For a predeclared India-forest adaptation experiment, `training.train` accepts `--datasets oscd,india_forest`, `--india-share` and `--init-from`; evaluate its frozen checkpoint separately with `--dataset india_forest`. Keep validation for threshold/model selection and test for final reporting. Do not select a winner by repeatedly looking at test scores. OSCD uses city splits with validation cities removed from official training; the India datasets use geographic splits with margins.
-
-After selection, install the chosen change checkpoint as `models/checkpoints/change_siamese.pt` and the chosen land-cover checkpoint as `models/checkpoints/landcover_unet.pt`. Preserve their evaluation reports, then run:
-
-```sh
-.venv/bin/python -m training.build_registry
-```
-
-Use the equivalent `.venv\Scripts\python.exe` on Windows. The registry builder matches held-out reports to checkpoint SHA-256; a checkpoint without matching evaluation is marked `UNEVALUATED`. Restart after replacing cached model instances. No accuracy, F1, IoU, sample count or runtime figure is claimed until the integrator reconciles the registry and report tokens.
+Per-date normalisation can erase change covering most of the AOI. The held-out scores evaluate the networks, while alert categories/verdicts also depend on spectral and context rules. Preserve the registry, checkpoints, reports and preprocessing together.
 
 ## Deployment and verification
 
-The repository supplies a Dockerfile and Compose file. **Docker is not installed on this documentation machine; deployment is unverified here.** The inspected Dockerfile installs operational dependencies, not the ML extra, and those operational requirements omit the SciPy import needed by analysis. Confirm the final image includes the intended inference dependencies and checkpoints before presenting container model inference.
+The repository supplies a Dockerfile and Compose file. **Docker is not installed on this documentation machine; deployment is unverified here.** The current Dockerfile installs CPU PyTorch and operational requirements and copies checkpoints, reports and the snapshot. The image has never been built here.
 
 ```sh
 docker compose up --build
@@ -159,4 +158,13 @@ Relevant checks for the integrator are `python -m pytest -q` and `python -m ruff
 
 Clouds, mixed pixels, registration error, seasonal water/vegetation, crop timing and weak reference labels can produce missed or false detections. Upsampling SWIR bands does not add 10 m detail. A land-cover label or a burn pattern does not prove cause or intent. Inference confidence and priority are evidence-ranking heuristics, not a probability of wrongdoing. A first check starts at the newest usable scene; subsequent live checks drain newer dates chronologically within a bounded catch-up budget. Excess older dates can be skipped and audited; use replay to inspect selected past dates. The local registry is incomplete and illustrative zones remain illustrative.
 
-Read the [10-minute demo](docs/SentinelWatch_Demo_Guide.md), [speaking guide](docs/SentinelWatch_Review_Speaking_Guide.md), [viva questions](docs/SentinelWatch_Viva_Questions.md), [v3 release notes](RELEASE_NOTES.md) and [documentation index](docs/README.md). The old review PDF is obsolete; the integrator must remove it and build a new PDF from the final reconciled report. No new PDF was built in this task.
+Read the [10-minute demo](docs/SentinelWatch_Demo_Guide.md), [speaking guide](docs/SentinelWatch_Review_Speaking_Guide.md), [viva questions](docs/SentinelWatch_Viva_Questions.md), [v3 release notes](RELEASE_NOTES.md) and [documentation index](docs/README.md). The [final report PDF](output/pdf/SentinelWatch_Final_Year_Project_Report.pdf) includes real screenshots and rendered diagrams; the obsolete review package has been removed. 
+
+
+The short-pair evidence rule downgrades a proposed human activity when vegetation declines but the later spectrum still shows vegetation. It reduces seasonal browning alarms and **can miss real change on short pairs**. Map imagery deliberately has **no third-party boundary or label layer**; site outlines are local overlays, and imagery is navigation context rather than a legal map.
+
+A roughly 75-minute window of imagery read failures was observed during overnight testing (03:34–04:48 IST). The cause is unproven. It motivated the hard fetch deadline; it is not evidence of a proven provider outage or an overnight scheduler validation.
+
+The recorded offline proof loaded cached evidence and a case PDF, completed a cached replay, failed an unreachable-provider live operation within its shorter test budget, and recovered in the same process. The browser proof blocked external requests and still loaded all comparison layers, moved the slider and downloaded a valid case PDF. New catalogue queries and uncached imagery still need network access. See the report for measured conditions.
+
+The recorded soak lasted **45 minutes**, with **46 samples**, **0 overview HTTP failures** and **0 logged errors**; peak RSS was **461 MB**. The scheduler ticked but no sites became due during that window. Scheduler-started checks were proved by an earlier clean-install run, not this soak. There was **no overnight scheduler run**. Docker, Windows launch, real SMTP delivery, live login and audible chime remain unverified here; verdicts have no field validation.

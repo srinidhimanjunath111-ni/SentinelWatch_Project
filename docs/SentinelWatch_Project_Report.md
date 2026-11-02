@@ -2,13 +2,13 @@
 
 Final-year engineering project report · v3.0.0 · Documentation inspection: 2 November 2026
 
-**Evidence statement.** This report describes inspected source in `app/`, `training/` and `data_tools/`, not a claim that every integration has run successfully. Backend, frontend and ML work share the checkout and are changing concurrently. Training is still running at this handoff. Model measurements remain explicit tokens for the integrator to fill from `models/registry.json` and its matching reports. Site outcomes remain result tokens until their run/case evidence is inspected. No training, PyTorch import, extra server or full application test suite was run by the documentation worker.
+**Evidence statement.** Model numbers come from `models/registry.json` and matching `reports/ml/*.json`; operational numbers come from `reports/demo/site_results.json`. The training recipe is `training/README.md`. These files were read before reconciliation. Prior test/proof results are attributed to those artifacts, not claimed as new runs. The documentation worker inspected the running UI read-only, captured real screenshots and built this report PDF. No check, replay, acknowledgement or data mutation was triggered on the demo instance.
 
-**Submission PDF.** A new PDF must be built from this report after the integrator reconciles the final code, measurements and screenshots. `output/pdf/SentinelWatch_Final_Year_Project_Review_Package.pdf` is obsolete and describes an earlier system. At the user's direction, deletion of that file is left to the integrator because it is outside this worker's owned paths. No replacement PDF is built here. This report replaces `SentinelWatch_Project_Review.md`.
+**Submission PDF.** [SentinelWatch_Final_Year_Project_Report.pdf](../output/pdf/SentinelWatch_Final_Year_Project_Report.pdf) is built from this Markdown with screenshots, rendered Mermaid diagrams, contents and page numbers. It replaces the obsolete review package.
 
 ## Abstract
 
-SentinelWatch helps an operator monitor marked places in India for physical land change using real Sentinel-2 imagery. The system periodically searches an imagery catalogue, checks usable pixels within each monitored area, selects comparable dates and processes six spectral bands on a common grid. A shared-encoder Siamese U-Net can supply change evidence and a single-date U-Net can supply land-cover classes. Explicitly labelled spectral methods remain available if learned inference is unavailable. Connected change regions are interpreted using land-cover transitions, spectral indices, a same-season reference, rainfall, disaster feeds, terrain and mapped context. A local authorised-zone registry supports a separate permission-record check. Eligible findings become department alerts with evidence, plain-language reasons, delivery records and a human review lifecycle. Historical processing is labelled Archive replay. The contribution is an inspectable evidence-to-review workflow. The system does not establish illegality, and this report does not claim unmeasured model quality or unverified deployment results.
+SentinelWatch helps an operator monitor marked places in India for physical land change using real Sentinel-2 imagery. The system periodically searches an imagery catalogue, checks usable pixels within each monitored area, selects comparable dates and processes six spectral bands on a common grid. A shared-encoder Siamese U-Net can supply change evidence and a single-date U-Net can supply land-cover classes. Explicitly labelled spectral methods remain available if learned inference is unavailable. Connected change regions are interpreted using land-cover transitions, spectral indices, a same-season reference, rainfall, disaster feeds, terrain and mapped context. A local authorised-zone registry supports a separate permission-record check. Eligible findings become department alerts with evidence, plain-language reasons, delivery records and a human review lifecycle. Historical processing is labelled Archive replay. The contribution is an inspectable evidence-to-review workflow. The system does not establish illegality, and model measurements do not validate cause or legality. Installed v2 has OSCD F1 0.461 and India forest F1 0.516; land-cover accuracy is 0.560 and macro F1 0.526. The evaluation section explains uncertainty and reference-label limits.
 
 ## 1. Problem statement
 
@@ -23,7 +23,7 @@ The intended users are an operator and departmental reviewers. Seeded inboxes re
 - Let an operator mark a place, choose categories and schedule catalogue checks every 6 h, 12 h, 24 h or weekly.
 - Retrieve real L2A imagery through public providers, with failure states and cached windows rather than invented scenes.
 - Detect candidate change, estimate land-cover transition, and explain a proposed category and verdict.
-- Test recurrence against the same season last year and check recorded authorisation independently.
+- Test recurrence against the same season in an earlier year and check recorded authorisation independently.
 - Route eligible alerts, retain delivery outcomes, and support acknowledgement, field verification, resolution and false-positive review.
 - Preserve acquisition IDs, processing method, masks, geometry, context, reasons and review history.
 - Report held-out evaluation only from matching model artifacts; label Archive replay and illustrative permit records.
@@ -105,17 +105,17 @@ Provider identity, product ID, acquisition time and method labels belong to the 
 2. Search a lookback interval and persist catalogue records, provider-independent scene keys and AOI links. Group products by date. A first live check selects a newest usable scene; later live checks drain newer dates chronologically, within a bounded catch-up window.
 3. Measure clear fraction **inside the AOI** using SCL. Invalid labels are `0, 1, 3, 8, 9, 10` (no data/defective, shadow, cloud and cirrus). Tile-wide cloud metadata alone is insufficient. When SCL coverage passes, the inspector also reads bands and excludes a blurred Haze Optimised Transform mask based on blue/red contrast. This can reject residual fog/smoke but may also mask very large bright surfaces.
 4. Choose a new usable later scene, then a clear baseline at least the configured gap earlier with enough shared valid coverage. If the normal lookback has no baseline, the current code attempts an extended baseline search for long cloudy periods. Defaults are a 20-day minimum gap, 0.60 clear fraction and 0.30 pair coverage. These are code settings, not measured performance.
-5. Search near the later date minus 365 days for a usable seasonal reference; the configurable window defaults to ±45 days. Missing/insufficient reference is recorded as untested.
+5. Search the same season in an earlier year. For shorter pairs the target is the previous year; for multi-year pairs it goes back far enough to approach the baseline period, avoiding a reference that already contains the change. The configurable search window surrounds that target. Missing/insufficient reference is recorded as untested. Read the actual reference date, not a generic “last year” label.
 6. Read `B02, B03, B04, B08, B11, B12` as float32 reflectance in `[0,1]`, shape `[6,H,W]`. Apply provider scale/offset logic. Bilinearly resample continuous bands, including SWIR from 20 m; use nearest neighbour for SCL. Upsampling does not create finer SWIR information.
 7. Intersect SCL/haze-valid masks and buffer invalid edges by three pixels before comparison. Persist quality and no-pair/no-new-scene outcomes.
 
-The implementation uses finite SCL reads and bounded live catch-up. After initialisation, newer dates are processed oldest-first and follow-up runs are queued fairly; dates beyond `MAX_CATCH_UP_DATES` can be skipped with an audit record. First checks and replay select the newest eligible scene at their effective date. This is not proof that every historical observation was analysed. Archive replay samples selected real dates over a requested past interval and submits separate serial runs; it is not a synthetic-data mode. Starting replay still requires catalogue access; already queued replay can reuse known metadata/cached imagery where available. Neither cache nor snapshot should be described as a new live acquisition.
+Remote imagery operations run in an isolated child with a hard fetch deadline. A hung read can be terminated rather than keeping a worker occupied indefinitely. Each band is retried separately before provider failover. The deadline bounds an imagery operation, not the entire analysis. The implementation also uses finite SCL reads and bounded live catch-up. After initialisation, newer dates are processed oldest-first and follow-up runs are queued fairly; dates beyond `MAX_CATCH_UP_DATES` can be skipped with an audit record. First checks and replay select the newest eligible scene at their effective date. This is not proof that every historical observation was analysed. Archive replay samples selected real dates over a requested past interval and submits separate serial runs; it is not a synthetic-data mode. Starting replay still requires catalogue access; already queued replay can reuse known metadata/cached imagery where available. Neither cache nor snapshot should be described as a new live acquisition.
 
 ### 6.2 Change and land-cover networks
 
 `SiameseUNet` uses one shared encoder for both dates. Absolute feature differences at multiple scales feed a decoder producing one change logit per pixel. This makes the feature comparison symmetric; direction comes later from before/after land-cover labels and index deltas. The architecture follows the FC-Siam-diff idea [1] with repository-specific blocks and preprocessing.
 
-The change model supports checkpoint-selected per-band median/IQR normalisation. The default pooled mode estimates statistics across both dates, preserving inter-date contrast better than independently centring each date. The alternative per-date mode cancels more date-to-date atmospheric/illumination difference but can erase change covering most of an AOI. Training records the chosen mode and inference follows it; do not assume the installed checkpoint uses the default. Scale floors and clipping limit amplification in uniform scenes. Neither mode proves L1C/L2A domain invariance. Batch/group feature normalisation and optional exponential moving average weights are also training choices; cite the final saved configuration.
+The change model supports checkpoint-selected per-band median/IQR normalisation. The installed v2 uses per-date median/IQR normalisation with alignment and calibrated temperature. v1 used pooled pair statistics. Per-date normalisation cancels more date-to-date atmospheric/illumination difference but can erase change covering most of an AOI. Training records the chosen mode and inference follows it. Scale floors and clipping limit amplification in uniform scenes. Neither mode proves L1C/L2A domain invariance. Batch/group feature normalisation and optional exponential moving average weights are also training choices; cite the final saved configuration.
 
 `LandCoverUNet` is a single-date encoder-decoder with eight classes: `tree`, `shrub_grass`, `crop`, `built`, `bare`, `water`, `wetland`, `mine`. It uses training-set band statistics stored with its checkpoint. Overlapping inference windows are blended; invalid land-cover pixels have class 255, and invalid change pixels receive zero. Concurrent inference is guarded by locks and cached model instances.
 
@@ -153,6 +153,8 @@ This table follows `_classify_cause` in `app/services/analysis.py`. Deltas mean 
 
 The burn darkness limits are visible reflectance ≤0.13 and NIR ≤0.26. Rainfall defaults are 100 mm (heavy) and 200 mm (extreme) over a 14-day window, including the wettest such window in the comparison interval when available. They are heuristic settings, not universal scientific/legal definitions. Every finding retains its index changes and readable reasons.
 
+For a short pair, a proposed human activity is downgraded to weak `OTHER_CHANGE` evidence if vegetation declines while the later spectrum still looks vegetated. Land-cover labels alone do not establish clearing or construction. This reduces false alarms from drying/senescence, but **can miss real change on short pairs**. It needs independent sensitivity evaluation.
+
 ### 6.5 Same-season test
 
 Let `R` be a region, `Vref` the valid reference pixels, and `I` an index. The test first requires `|R ∩ Vref|/|R| ≥ 0.5`; otherwise `seasonal_persists = null`. It considers index drivers whose regional before-to-after mean change magnitude is at least `0.6 × index_threshold`.
@@ -176,13 +178,13 @@ Seasonal recurrence is considered first. For a remaining human-caused category, 
 
 The broad `OTHER` match and half-region overlap are implementation choices, not legal standards. Matching checks local records, not authenticity, conditions of a clearance, exact event date or full containment. Illustrative zones participate in this same check; the reason explicitly says they are not official permit records. An illustrative match cannot be presented as a real clearance.
 
-With no matching record, the strongest verdict is `SUSPECTED_UNAUTHORISED`: **physical change consistent with a human activity, with no authorisation on record**. This can reflect registry incompleteness and requires field verification. Flood, landslide and burn-scar categories become `NATURAL_EVENT` when not overridden by recurrence. In particular, the label does not establish that a fire was naturally ignited. Unresolved material change becomes `NEEDS_REVIEW`.
+When no match exists but a change falls near an active matching-type illustrative zone, a **1 km review buffer** can yield `NEEDS_REVIEW`. It marks boundary uncertainty; it does not enlarge the authorised area. With neither match nor review-buffer evidence, the strongest verdict is `SUSPECTED_UNAUTHORISED`: **physical change consistent with a human activity, with no authorisation on record**. This can reflect registry incompleteness and requires field verification. Flood, landslide and burn-scar categories become `NATURAL_EVENT` when not overridden by recurrence. In particular, the label does not establish that a fire was naturally ignited. Unresolved material change becomes `NEEDS_REVIEW`.
 
 ### 6.7 Evidence scores, alerts and routing
 
 Finding confidence is a weighted evidence-ranking heuristic: fused change support, rule strength and seasonal support. Weak cause patterns such as vegetation gain or same-cover variation have a confidence cap of 0.55, below the default alert threshold of 0.62; these are rule constants, not accuracy measurements. It is not calibrated class accuracy or a probability of wrongdoing. Priority additionally considers verdict and changed area. Severity follows verdict and area thresholds. None of these values constitutes a legal risk score.
 
-`SEASONAL_BENIGN` findings are stored without alerts. Other findings must pass the configured confidence threshold. Site-selected categories restrict non-hazard categories; hazard categories bypass that category filter but still face the evidence threshold. Repeated same-category regions overlapping at least 0.20 of the smaller region merge into an active alert. Live and replay evidence do not merge; replay merging is restricted to the same replay ID. Merging updates persistence rather than automatically creating another dispatch.
+`SEASONAL_BENIGN` findings are stored without alerts. Other findings face the evidence threshold per category/verdict group: one strong region can make that group eligible, while weak-cause regions are excluded. Eligible members of the same category and verdict become one grouped alert; they remain separate findings underneath. Site-selected categories restrict non-hazard categories; hazard categories bypass that category filter but still face the evidence threshold. Repeated same-category, same-verdict regions overlapping at least 0.20 of the smaller region merge into an active alert. Live and replay evidence do not merge; replay merging is restricted to the same replay ID. Merging updates persistence rather than automatically creating another dispatch.
 
 | Category | Routing destination |
 |---|---|
@@ -235,77 +237,147 @@ The runnable recipe and paths are in the [root README](../README.md#reproduce-tr
 
 ## 9. Testing and verification
 
-Documentation verification is deliberately lightweight on a machine already training models. No model was loaded by the documentation worker. No current full-suite result is inferred from an older report or another worker's logs.
+The documentation task used Playwright in a `/tmp` virtual environment to navigate the existing demo UI read-only. It checked the comparison slider, site/history links, region selection and department inbox navigation. Required screens were captured and visually inspected. No application test suite, check or replay was run against port 8000. The current full-suite count is not supplied by the approved measurement sources, so none is asserted here.
 
-| Evidence item | What was inspected or run | Status at handoff |
-|---|---|---|
-| Product vocabulary/API | Engineering contract, routers, request schemas, payload and routing code read | Source inspected; runtime flow pending integrator check |
-| Database design | `models.py` columns/FKs/nullability read; ER consistency checked statically | Source-level consistency; database migration/runtime pending integrator check |
-| Training recipe | Dataset builders and train/evaluate/registry argument definitions read | Commands not executed; training/evaluation pending integrator check |
-| UI demo clicks | Hash routes, visible labels, incident and replay code read | Source-derived script; browser rehearsal pending integrator check |
-| Bibliography | Author/publisher/official pages fetched or searched | Verified links in references; access limitations stated below |
-| Markdown links and tokens | Lightweight static check recorded in completion checklist | See checklist for exact commands/results |
-| Mermaid syntax | Parser check attempted as described in completion checklist | See checklist; rendering is separate from parsing |
-| Application tests/lint | Relevant test sources inspected; no suite or lint command run in this task | Pending integrator check |
-| Live imagery, SMTP and PDF output | No external operational run or dispatch performed in this task | Pending integrator check |
-| Docker deployment | Docker unavailable on this machine | Unverified here; pending integrator check |
+Prior runtime evidence is in `reports/demo/site_results.json`:
 
-The test sources currently cover health/page serving and ML interface/preprocessing/security cases. Tests under active development must be reviewed again before attributing coverage. Unit tests using temporary/random fixtures exercise contracts; such fixtures must never become presentation satellite results. Integration verification should separately check real pair registration, cloudy/no-new-scene states, the seasonal and authorisation branches, channel outcomes and restart recovery.
-
-## 10. Results and evaluation plan
-
-### 10.1 Model results awaiting measured artifacts
-
-These tokens are intentional. The integrator must fill them only after checking the installed checkpoint hash, split and registry/report correspondence. No table entry is a claimed result.
-
-| Measure | Pending value |
+| Recorded proof | Result and boundary |
 |---|---|
-| Change, OSCD test precision | {{METRIC:change_oscd_test_precision}} |
-| Change, OSCD test recall | {{METRIC:change_oscd_test_recall}} |
-| Change, OSCD test F1 | {{METRIC:change_oscd_test_f1}} |
-| Change, OSCD test IoU | {{METRIC:change_oscd_test_iou}} |
-| Change, OSCD test accuracy | {{METRIC:change_oscd_test_accuracy}} |
-| Change, India forest test F1 | {{METRIC:change_india_forest_test_f1}} |
-| Change, India forest test IoU | {{METRIC:change_india_forest_test_iou}} |
-| Land cover, held-out India macro F1 | {{METRIC:landcover_india_test_macro_f1}} |
-| Land cover, held-out India macro IoU | {{METRIC:landcover_india_test_macro_iou}} |
-| Land cover, held-out India accuracy | {{METRIC:landcover_india_test_accuracy}} |
-| Land cover, held-out mine-class F1 | {{METRIC:landcover_india_test_mine_f1}} |
-| Change training / validation / test sample counts by dataset | {{METRIC:change_dataset_split_counts}} |
-| Land-cover training / validation / test counts by tile | {{METRIC:landcover_dataset_split_counts}} |
-| Installed change model training duration | {{METRIC:change_training_seconds}} |
-| Installed land-cover model training duration | {{METRIC:landcover_training_seconds}} |
-| CPU change inference duration and measurement conditions | {{METRIC:change_cpu_inference_seconds}} |
-| CPU land-cover inference duration and measurement conditions | {{METRIC:landcover_cpu_inference_seconds}} |
-| Peak memory and measurement conditions | {{METRIC:inference_peak_memory}} |
+| Fresh-install restore | Empty DB restored 7 sites, 14 cases, 20 alerts; all 565 evidence-image URLs returned successfully; a valid case PDF was recorded |
+| Scheduler-started checks | Earlier clean-install run recorded 1 `NO_NEW_ACQUISITION` and 6 `NO_SUITABLE_ACQUISITION` outcomes; this is separate from the soak |
+| Offline provider proof | 7 cached images and a valid case PDF; cached replay completed in 10.093 s. An unreachable-provider live operation failed in 2.029 s under a 2 s test budget, versus the production 120 s budget |
+| Recovery in same process | `NO_SUITABLE_ACQUISITION` in 2.272 s after restoring provider access; backoff cleared. This proves request recovery, not a new scene |
+| Offline browser proof | External requests blocked; all 4 comparison images loaded, slider moved from 50 to 52, valid PDF download; 6 external requests were blocked |
+| Documentation capture | Real UI navigation and screenshots; no mutation requests attempted; console outcome recorded in the completion checklist |
 
-For binary change: precision is `TP/(TP+FP)`, recall is `TP/(TP+FN)`, F1 is `2TP/(2TP+FP+FN)`, and IoU is `TP/(TP+FP+FN)`. State which class is positive and how ignored pixels are excluded. Accuracy can be misleading when unchanged pixels dominate. The evaluator pools binary pixel counts and also retains per-scene metrics. Macro class metrics weight classes equally, unlike overall pixel accuracy. Report unsupported/absent classes explicitly rather than manufacturing a score. None of these measures evaluates legal status or end-to-end causal attribution.
+### 9.1 Recorded soak and observed failure window
 
-### 10.2 Site evidence awaiting review
+The recorded soak completed **45 minutes**, with **46 samples** and **46 scheduler tick changes**. RSS was **345 MB** at start, **461 MB** maximum and **84 MB** at end; maximum overview response time was **0.055 s**, maximum threads **24** and maximum open files **204**. There were **0 non-200 overview responses** and **0 logged errors**. Repeated archive replays ran during the window.
 
-| Demonstration evidence | Pending result |
+The scheduler ticked, but restored sites were not yet due: **no due checks ran during the soak**. Scheduler-started checks were proved by the earlier clean-install run, not this window. There was **no overnight scheduler run**.
+
+The implementation brief records a roughly 75-minute imagery-read failure window during overnight testing, **03:34–04:48 IST**. This is an observed interval, not a proven provider outage. Its cause is unproven; no causal diagnosis is supplied by the approved artifacts. It motivated the hard fetch deadline.
+
+## 10. Results and evaluation
+
+### 10.1 Measured model results
+
+The installed change checkpoint is **v2**, SHA-256 `f5f5b9d77336044d8426defe450e81d81606da3d533d0cb7cd354ed53cdff9fd`; land cover is **v1**, SHA-256 `3d317266ef39be57a3e509f9bb1a7c4faf8c61a2ca1e7dec7f2637a4b857fbda`. Registry hashes match the corresponding test reports. Ratios are rounded to three decimals; site hectares retain two. Test evaluation ran on MPS; CPU timing is a separate measurement.
+
+| Measure | Measured value |
 |---|---|
-| Live check: area, run ID, provider, actual scene date and terminal state | {{RESULT:live_check_outcome}} |
-| Archive replay: case/run IDs, acquisition dates, images and replay badge | {{RESULT:archive_replay_case}} |
-| Same-season comparison: reference ID/date/coverage and reasons | {{RESULT:seasonality_comparison}} |
-| Authorisation comparison: zone type/date/overlap/source and illustrative flag | {{RESULT:authorisation_comparison}} |
-| Department routing: alert ID, channel status, outbox/SMTP evidence | {{RESULT:dispatch_delivery}} |
+| Change v2, OSCD test precision | 0.415 |
+| Change v2, OSCD test recall | 0.518 |
+| Change v2, OSCD test f1 | 0.461 |
+| Change v2, OSCD test iou | 0.299 |
+| Change v2, OSCD test accuracy | 0.937 |
+| Change v2, India forest test f1 | 0.516 |
+| Change v2, India forest test iou | 0.347 |
+| Land cover v1, India test macro f1 | 0.526 |
+| Land cover v1, India test macro iou | 0.373 |
+| Land cover v1, India test accuracy | 0.560 |
+| Land cover v1, mine-class F1 | 0.659 |
 
-Screenshots belong under `docs/screenshots/` with acquisition dates, origin, method and IDs recorded in captions. The linked filenames are placeholders. A map tile is not the model's dated input. A saved report is not proof that an officer received it. Record negative outcomes such as no new scene or missing seasonal reference as legitimate evidence.
+| Training / timing item | Measurement and conditions |
+|---|---|
+| Change v2 data | OSCD: 14 final-training cities, 14 out-of-fold validation cities, 10 test cities. The validation cities are the same training pool held out by fold, not 14 additional cities. India forest: 262 train / 54 validation / 100 test pairs |
+| Land-cover data | 580 train / 124 validation / 118 test chips, from 49 / 5 / 5 geographic tiles |
+| Change v2 training | 1,036.9 s, MPS; final run only, excluding fold runs and data preparation |
+| Land-cover v1 training | 1,810.8 s, MPS |
+| CPU change inference | Median 2.187 s over 3 runs |
+| CPU land-cover inference | Median 1.571 s over 3 runs |
+| Timing conditions | Real OSCD Hong Kong pixels, 500 × 500, CPU with 4 threads, macOS arm64; other work shared the machine, so the report calls it a rough upper bound |
+| Peak memory | Process peak RSS 2,333.7 MB; 221.8 MB before models. This is not isolated tensor/GPU memory or a national-scale capacity claim |
+
+Sources: `models/registry.json`, `reports/ml/change_v2_oscd_test.json`, `change_v2_india_forest_test.json`, `landcover_v1_test.json`, dataset summaries, training reports and `inference_timing.json`.
+
+| Comparison | v1 | Installed v2 |
+|---|---:|---:|
+| OSCD test F1 | 0.248 | 0.461 |
+| India forest test F1 | 0.101 | 0.516 |
+
+`change_selection.json` records the decision and its caveat: v1's OSCD test result was seen before v2 was designed. v2's configuration, threshold and temperature were chosen from validation, and each v2 test set was evaluated once, but **v2 is not fully blind**. Test scores then helped select the winner, making the selected score potentially optimistic. v1 investigation documented unstable validation behaviour, normalisation/alignment checks and crop-sampling issues; v2 is a revised experiment, not a blind replication of v1.
+
+The published FC-Siam-diff OSCD result is **57.92% F1 (about 0.58)** in [Daudt et al., Table 1](https://arxiv.org/html/1810.08462) [1]. The exact figure was confirmed in the fetched paper. It uses thirteen bands; this project uses six, different preprocessing and an adapted network. **SentinelWatch is below the published result**; this is context rather than a controlled reproduction.
+
+Out-of-fold OSCD F1 is **0.289** in `change_v2_calibration.json`, well below the pooled test F1. Test-city F1 ranges from **0.004 (Valencia) to 0.751 (Montpellier)**; the mean of city F1 scores is **0.386**. The pooled **0.461 carries real uncertainty** and is not a reliable score for every place. India forest supervision uses coarse annual Hansen labels and ignores non-forest pixels; its score does not measure false alarms outside forest. Land-cover scores measure **agreement with WorldCover and historical mining polygons rather than ground truth**. No category or verdict has field validation.
+
+For binary change, precision is `TP/(TP+FP)`, recall is `TP/(TP+FN)`, F1 is `2TP/(2TP+FP+FN)` and IoU is `TP/(TP+FP+FN)`. The change class is positive, ignored pixels are excluded, and pooled counts give micro scores. Land-cover macro scores give classes equal weight. High unchanged-pixel accuracy alone is misleading. These measurements do not evaluate legality or end-to-end causal attribution.
+
+### 10.2 Measured site results
+
+Source: `reports/demo/site_results.json`, using installed v2. Each archive run used the suggested range with `max_scenes=2`: baseline plus analysed comparison. Prior real imagery/context caches were reused; v2 findings and dispatches were recomputed in a clean database. Outage failures from the first pass were excluded from the site verdict results, not hidden as successful runs.
+
+**Hectares mean only the stated primary category/verdict**, not all changed land or a surveyed event extent. Counts are all grouped alerts in that archive case. “Expected” verdicts in research notes were hypotheses, not forced labels or field truth. Visual mask review was qualitative.
+
+| Site | Archive acquisition pair | Primary category / verdict | Primary ha | Alerts |
+|---|---|---|---:|---:|
+| Jewar | 2021-03-20 → 2025-03-24 | Construction / authorised activity | 633.41 | 5 |
+| Navi Mumbai | 2021-01-27 → 2025-01-06 | Construction / authorised activity | 133.51 | 2 |
+| PEKB | 2021-02-24 → 2025-03-25 | Mining / authorised activity | 53.75 | 4 |
+| Rawa–Nangal | 2021-03-05 → 2025-03-24 | Mining / suspected unauthorised | 3.78 | 2 |
+| Wayanad | 2024-02-05 → 2024-12-16 | Landslide / natural event | 76.71 | 2 |
+| Kanha | 2023-11-09 → 2024-04-17 | Seasonal Vegetation / seasonal benign | 1,912.63 | 0 |
+| Delhi | 2023-06-08 → 2023-07-13 | Flood / natural event | 152.93 | 2 |
+
+- **Jewar:** besides 633.41 ha of construction matched to the illustrative zone, alerts include suspected construction (7.70 ha), suspected urbanisation (3.01 ha), construction needing review (24.05 ha), and other change needing review (4.60 ha). The whole site is not labelled authorised.
+- **Navi Mumbai:** authorised construction is 133.51 ha; a separate other-change alert needs review (54.17 ha).
+- **PEKB:** mining matched to the illustrative zone is 53.75 ha. Other alerts are suspected deforestation (6.10 ha), other change needing review (141.46 ha), and registered-zone deforestation (4.07 ha). **The clearance is contested**. The local record does not resolve litigation, conditions or exact legal boundaries.
+- **Rawa:** the weakest evidence. Sparse quarry-margin outlines are plausible, but pipeline tile 43RFL differs from dossier tile 43RGL; attribution remains uncertain. The mining headline is 3.78 ha, with a separate other-change review alert of 3.81 ha. “Suspected, no authorisation on record” is the limit of the conclusion.
+- **Wayanad:** the 76.71 ha landslide pattern is the strongest visual opening. The after image is delayed by months of cloud, so it does **not demonstrate immediate detection**. A separate other-change alert is 3.03 ha. The small recent/live landslide-like patch is not independently verified as a new landslide.
+- **Kanha:** 1,912.63 ha of seasonal vegetation are retained without alerts. Other weak findings remain visible; zero alerts does not establish that no physical change occurred.
+- **Delhi:** 152.93 ha of flood-pattern evidence are **cloud-limited**; masked regions are excluded. The second alert is other change needing review (23.55 ha). It is not a complete flood extent or peak/onset measurement.
+
+The recorded recent live cases yielded Jewar 1 alert, Wayanad 2, and 0 at the other sites. Wayanad's live landslide-like group is 3.79 ha and the other-change group is 3.74 ha, requiring verification. Cached live checks took 6.051–12.089 s across these sites. Separate uncached examples were Jewar 34.211 s and Navi Mumbai 62.5 s; these are observations, not a response-time guarantee.
+
+### 10.3 Traceable evidence and missing detail
+
+| Evidence | Verified record / boundary |
+|---|---|
+| Wayanad archive case | `4f26f148-c1f2-422d-901f-419e71688f1b`; 2024-02-05 → 2024-12-16; Archive replay; `siamese-unet+spectral` and `landcover-unet` |
+| Recent Wayanad case | `695c2f67-2e23-45a3-8380-c6527d572a87`; 2026-07-14 → 2026-10-27; completed, 2 grouped alerts |
+| Same-season evidence | Kanha's seasonal outcome and zero-alert result are recorded. The approved results JSON does not give its reference ID/date/region coverage; these details are therefore not invented. Inspect actual dated evidence in the UI |
+| Authorisation comparison | Jewar, Navi and PEKB primary outcomes are registry matches. The approved results JSON does not contain zone-level type/date/overlap/source details; read the illustrative record and region reasons in the UI, not a fabricated overlap statistic |
+| Dispatch example | Alert `0878e07e-852d-455e-99be-aa8c9f69d0a2`; `IN_APP` / `RECORDED` to Delhi Pollution Control Board. Restore proof records 20 routed alerts, 0 emails sent and 15 saved to outbox |
+| Live provider/run detail | Recent pairs, terminal states, methods and case IDs are recorded; provider and run IDs are not in the site result artifact, so they are not asserted here |
+
+Saved-to-outbox history does not mean mail was sent. Snapshot export deliberately omits outbox bodies and raw imagery windows, retains delivery history and ships JPEG evidence. On first startup with an empty database, restoration copies snapshot rows and images; it makes active sites due for a catalogue poll. A restored historical case remains historical.
+
+### 10.4 Real application screens
+
+All captures are from the running clean first-run instance, at 1920 × 1080, without triggering writes. [Capture provenance and IDs](screenshots/README.md). The map shows imagery with **no third-party boundary or label layer by design**; app site/zone overlays are illustrative geometry, not an official map. Map imagery is not the dated analysis input.
+
+![Operations: sites, grouped alerts and separate live/replay totals](screenshots/operations.jpg)
+
+![Wayanad: dated archive comparison and natural-event evidence](screenshots/wayanad.jpg)
+
+![Jewar: an authorised construction region selected inside the illustrative footprint](screenshots/jewar.jpg)
+
+![Rawa: suspected mining evidence with no authorisation on record](screenshots/rawa.jpg)
+
+![Kanha: site history retains seasonal findings without alerts](screenshots/kanha.jpg)
+
+![Alerts: category, department and origin filters](screenshots/alerts.jpg)
+
+![Departments: routing records with separate email outcomes](screenshots/departments.jpg)
+
+![Zones: illustrative footprints with provenance and validity](screenshots/zones.jpg)
+
+![Models: installed v2 and checkpoint-matched evaluation](screenshots/models.jpg)
 
 ## 11. Limitations, security and ethics
 
 - The system proposes causes from patterns and optional context. Optical imagery cannot prove the mechanism, actor, intent or legality of change. A burn-scar `NATURAL_EVENT` label does not prove natural ignition.
 - Clouds, haze, monsoon gaps, shadows, mixed pixels and registration errors affect results. The stable-pixel shift estimate, strong-spectral override and haze filter are heuristics requiring independent validation. Morphology and minimum area can discard small events.
-- Seasonality is based on one available reference near last year's date and heuristic thresholds. Recurring water or shifted sowing dates can mislead it; crop-cycle suppression can hide unusual harm.
+- Seasonality is based on one available earlier same-season reference and heuristic thresholds. Recurring water or shifted sowing dates can mislead it; crop-cycle suppression can hide unusual harm.
 - OSCD L1C urban imagery differs from live L2A India data. Normalisation reduces but cannot validate away the shift. India forest/land-cover supervision is weak and dated; geographic splits do not guarantee national generalisation.
 - An incomplete permit register creates absence-of-record findings. Illustrative approximate zones can influence the code's verdict and must remain visibly qualified. A match is not official legal confirmation.
 - A scheduled check does not guarantee a new usable observation. Initial newest-scene selection, finite read budgets and bounded chronological catch-up limit observation coverage. Provider failover does not eliminate all outages; a new replay request needs catalogue access.
 - SQLite and in-process queues/events suit a small deployment. Multiple Uvicorn processes require external coordination. Crash recovery is not a substitute for backups, capacity testing or a durable distributed queue.
 - Optional password login protects mutating API routes; reads, evidence and model artifacts remain public. It is not departmental identity, roles or tamper-proof audit. TLS, access review, secret management and abuse controls are deployment work.
 - `.example` addresses represent seeded routing only. SMTP acceptance is not verified receipt. Avoid naming a person/company as acting illegally; retain review/false-positive outcomes and minimise dissemination of sensitive locations.
-- Fresh-install dependency gap: the inspected operational requirements omit SciPy even though analysis imports `scipy.ndimage`. The README manual setup includes SciPy explicitly; launch scripts and container requirements need backend/integrator reconciliation. No install or clean-environment launch was tested here.
-- Docker/container execution, final package portability, field validation and external delivery remain unverified by this worker.
+- The operational requirements now include SciPy and ReportLab; both launch scripts are present. Docker image execution and Windows launch remain untested here.
+- Docker image never built here (Docker not installed). `scripts/run.ps1` never run on Windows. SMTP real delivery not exercised. Login tested in the test suite only, not exercised in this UI walk. Alert chime never heard in headless runs. No overnight scheduler run. Verdicts have no field validation.
 
 ## 12. Future scope
 
@@ -328,31 +400,51 @@ Sources checked during this documentation task. No performance statistic is borr
 
 Citation verification note: the Crossref API was fetched successfully for [1] and [4]. The author preprints and dataset/official pages support the remaining entries. Fetching a bibliographic record verifies the citation and accessible summary, not every claim in an inaccessible full text.
 
-## 14. Integrator token inventory
+## 14. Evidence provenance
 
-Every distinct measurement/result token used in this documentation package is listed below. Replace from registry/evidence only; if unavailable, retain the token and state why. Sample counts and timing belong to measured artifacts, never an estimate.
+The final figures are traceable to the installed-model registry, model training/test/selection/calibration/investigation/timing reports, the training README and the measured demo-results JSON. No measurement/result placeholders remain. Missing run/provider IDs, detailed seasonal reference records and per-region zone overlaps were rewritten as explicit evidence limits rather than guessed. The observed overnight failure interval comes from the implementation brief; its cause remains unproven.
 
-- `{{METRIC:change_cpu_inference_seconds}}`
-- `{{METRIC:change_dataset_split_counts}}`
-- `{{METRIC:change_india_forest_test_f1}}`
-- `{{METRIC:change_india_forest_test_iou}}`
-- `{{METRIC:change_oscd_test_accuracy}}`
-- `{{METRIC:change_oscd_test_f1}}`
-- `{{METRIC:change_oscd_test_iou}}`
-- `{{METRIC:change_oscd_test_precision}}`
-- `{{METRIC:change_oscd_test_recall}}`
-- `{{METRIC:change_training_seconds}}`
-- `{{METRIC:inference_peak_memory}}`
-- `{{METRIC:landcover_cpu_inference_seconds}}`
-- `{{METRIC:landcover_dataset_split_counts}}`
-- `{{METRIC:landcover_india_test_accuracy}}`
-- `{{METRIC:landcover_india_test_macro_f1}}`
-- `{{METRIC:landcover_india_test_macro_iou}}`
-- `{{METRIC:landcover_india_test_mine_f1}}`
-- `{{METRIC:landcover_training_seconds}}`
-- `{{RESULT:archive_replay_case}}`
-- `{{RESULT:authorisation_comparison}}`
-- `{{RESULT:dispatch_delivery}}`
-- `{{RESULT:live_check_outcome}}`
-- `{{RESULT:seasonality_comparison}}`
+## Appendix A. Rendered system diagrams
+
+The Mermaid sources remain editable under `docs/diagrams/`. The rendered diagrams below are included in the PDF; they describe implementation, not measured performance.
+
+### Architecture
+
+![Architecture](diagrams/rendered/architecture.png)
+
+### Data flow: level 0
+
+![Data flow: level 0](diagrams/rendered/dfd-level-0.png)
+
+### Data flow: level 1
+
+![Data flow: level 1](diagrams/rendered/dfd-level-1.png)
+
+### Data flow: level 2
+
+![Data flow: level 2](diagrams/rendered/dfd-level-2.png)
+
+### Use cases
+
+![Use cases](diagrams/rendered/use-case.png)
+
+### Processing sequence
+
+![Processing sequence](diagrams/rendered/sequence.png)
+
+### Activity flow
+
+![Activity flow](diagrams/rendered/activity.png)
+
+### Components
+
+![Components](diagrams/rendered/component.png)
+
+### Deployment
+
+![Deployment](diagrams/rendered/deployment.png)
+
+### Entity relationships
+
+![Entity relationships](diagrams/rendered/er-diagram.png)
 

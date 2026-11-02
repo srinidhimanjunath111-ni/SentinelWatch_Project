@@ -22,6 +22,8 @@ cloudy. The UI states this; it never invents a scene.
   carry `origin = "live"`.
 - Seeded department mailboxes use the reserved `.example` domain. Never seed a real government address.
 
+**Current implementation qualifications.** Alert rows group eligible regions by category and verdict; repeated detections merge only with the same category/verdict and origin, and replay merges stay within one replay ID. Repeating a replay may add replay alerts. Remote imagery operations have a hard fetch deadline and per-band retry. Cached evidence remains available offline; new catalogue searches and uncached windows need network access. An illustrative-zone review buffer marks boundary uncertainty without extending authorisation. The short-pair evidence rule can miss real change when later pixels still look vegetated. Same-season references use an earlier year near the baseline period for multi-year pairs; always read the recorded date. Map imagery deliberately has no third-party boundary or label layer.
+
 ## 2. Bands and arrays
 
 All model and analysis arrays use this band order on one 10 m grid, as float32 surface reflectance
